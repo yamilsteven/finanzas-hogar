@@ -1,4 +1,13 @@
-import type { Debt, Expense, Income, Saving, User } from "@/types";
+import type {
+  Debt,
+  Expense,
+  Income,
+  RecurringExpenseTemplate,
+  RecurringIncomeTemplate,
+  Saving,
+  User,
+} from "@/types";
+import { COP_PAYDAY, LAST_DAY } from "@/lib/payCycle";
 
 export const users: User[] = [
   {
@@ -183,19 +192,159 @@ export const mockExpenses: Expense[] = [
   },
 ];
 
-export const mockIncomes: Income[] = [
+export const mockExpenseTemplates: RecurringExpenseTemplate[] = [
   {
-    id: "inc-1",
-    source: "Salario remoto (USD)",
+    id: "rt-exp-1",
+    description: "Administración edificio",
+    category: "Vivienda",
+    amount: 450_000,
+    currency: "COP",
+    paidBy: "Yamil",
+    owner: "Shared",
+    dayOfMonth: 5,
+    active: true,
+  },
+  {
+    id: "rt-exp-2",
+    description: "Servicios (agua + luz + gas)",
+    category: "Servicios",
+    amount: 310_000,
+    currency: "COP",
+    paidBy: "Liz",
+    owner: "Shared",
+    dayOfMonth: 10,
+    active: true,
+  },
+  {
+    id: "rt-exp-3",
+    description: "Internet fibra",
+    category: "Servicios",
+    amount: 98_000,
+    currency: "COP",
+    paidBy: "Yamil",
+    owner: "Shared",
+    dayOfMonth: 8,
+    active: true,
+  },
+  {
+    id: "rt-exp-4",
+    description: "Mercado Éxito quincenal",
+    category: "Mercado",
+    amount: 420_000,
+    currency: "COP",
+    paidBy: "Liz",
+    owner: "Shared",
+    dayOfMonth: 15,
+    active: true,
+  },
+  {
+    id: "rt-exp-5",
+    description: "Netflix + Spotify",
+    category: "Suscripciones",
+    amount: 28,
+    currency: "USD",
+    paidBy: "Yamil",
+    owner: "Yamil",
+    dayOfMonth: 15,
+    active: true,
+  },
+  {
+    id: "rt-exp-6",
+    description: "Gimnasio",
+    category: "Salud",
+    amount: 120_000,
+    currency: "COP",
+    paidBy: "Liz",
+    owner: "Liz",
+    dayOfMonth: 1,
+    active: true,
+  },
+  {
+    id: "rt-exp-7",
+    description: "Cuota hipoteca",
+    category: "Vivienda",
+    amount: 2_150_000,
+    currency: "COP",
+    paidBy: "Yamil",
+    owner: "Shared",
+    dayOfMonth: 1,
+    active: true,
+  },
+];
+
+export const mockIncomeTemplates: RecurringIncomeTemplate[] = [
+  {
+    id: "rt-inc-1",
+    source: "Sueldo COP Yamil",
+    owner: "Yamil",
+    currency: "COP",
+    amount: 8_500_000,
+    type: "Fijo",
+    dayOfMonth: COP_PAYDAY,
+    active: true,
+    notes: "Entra el día 20 de cada mes",
+  },
+  {
+    id: "rt-inc-2",
+    source: "Sueldo USD Yamil",
     owner: "Yamil",
     currency: "USD",
     amount: 4200,
     type: "Fijo",
-    date: "2026-09-01",
-    notes: "Pago quincenal consolidado",
+    dayOfMonth: LAST_DAY,
+    active: true,
+    notes: "Entra el último día del mes",
+  },
+  {
+    id: "rt-inc-3",
+    source: "Salario empresa local Liz",
+    owner: "Liz",
+    currency: "COP",
+    amount: 6_500_000,
+    type: "Fijo",
+    dayOfMonth: 1,
+    active: true,
+  },
+];
+
+export const mockIncomes: Income[] = [
+  {
+    id: "inc-1",
+    source: "Sueldo USD Yamil",
+    owner: "Yamil",
+    currency: "USD",
+    amount: 4200,
+    type: "Fijo",
+    date: "2026-08-31",
+    notes: "USD del cierre de agosto → financia ventana 1–19 sep",
+    templateId: "rt-inc-2",
+    periodKey: "2026-08",
   },
   {
     id: "inc-2",
+    source: "Sueldo COP Yamil",
+    owner: "Yamil",
+    currency: "COP",
+    amount: 8_500_000,
+    type: "Fijo",
+    date: "2026-09-20",
+    notes: "Entra el día 20",
+    templateId: "rt-inc-1",
+    periodKey: "2026-09",
+  },
+  {
+    id: "inc-3",
+    source: "Salario empresa local Liz",
+    owner: "Liz",
+    currency: "COP",
+    amount: 6_500_000,
+    type: "Fijo",
+    date: "2026-09-01",
+    templateId: "rt-inc-3",
+    periodKey: "2026-09",
+  },
+  {
+    id: "inc-4",
     source: "Freelance diseño",
     owner: "Yamil",
     currency: "COP",
@@ -203,25 +352,8 @@ export const mockIncomes: Income[] = [
     type: "Variable",
     date: "2026-09-12",
   },
-  {
-    id: "inc-3",
-    source: "Salario empresa local",
-    owner: "Liz",
-    currency: "COP",
-    amount: 6_500_000,
-    type: "Fijo",
-    date: "2026-09-01",
-  },
-  {
-    id: "inc-4",
-    source: "Bonificación trimestral",
-    owner: "Liz",
-    currency: "COP",
-    amount: 1_200_000,
-    type: "Variable",
-    date: "2026-09-15",
-  },
 ];
+
 
 export const mockSavings: Saving[] = [
   {

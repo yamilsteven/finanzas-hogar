@@ -37,6 +37,13 @@ Cada registro tiene `owner`: `Yamil` | `Liz` | `Shared`.
 - Vista individual: solo editas tus ítems (Shared siempre editable).
 - Vista Familiar / modo Admin: edición completa.
 
+## Ciclo de pagos (Yamil)
+
+- **Ventana COP:** día 20 → fin de mes (sueldo COP)
+- **Ventana USD:** día 1 → 19 (sueldo USD del cierre anterior)
+- Plantillas recurrentes en **Gastos → Plantillas** se materializan al abrir cada mes
+- Ruta: `/ciclo`
+
 ## TRM
 
 Orden de fuentes: datos.gov.co → open.er-api.com → valor estático (~4100).

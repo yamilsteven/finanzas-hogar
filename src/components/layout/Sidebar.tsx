@@ -12,12 +12,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
+  CalendarRange,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/ciclo", label: "Ciclo", icon: CalendarRange },
   { href: "/gastos", label: "Gastos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
   { href: "/ingresos", label: "Ingresos", icon: Wallet },
@@ -27,9 +29,9 @@ export const navItems = [
 
 export const mobileNavItems = [
   { href: "/", label: "Inicio", icon: Home },
+  { href: "/ciclo", label: "Ciclo", icon: CalendarRange },
   { href: "/gastos", label: "Gastos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
-  { href: "/ingresos", label: "Ingresos", icon: Wallet },
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
 

@@ -1,13 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BottomNav, Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { useHydrated } from "@/hooks/useHydrated";
+import { useFinanceStore } from "@/store/financeStore";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const hydrated = useHydrated();
+  const ensurePeriodsMaterialized = useFinanceStore(
+    (s) => s.ensurePeriodsMaterialized
+  );
+
+  useEffect(() => {
+    if (hydrated) ensurePeriodsMaterialized();
+  }, [hydrated, ensurePeriodsMaterialized]);
 
   if (!hydrated) {
     return (

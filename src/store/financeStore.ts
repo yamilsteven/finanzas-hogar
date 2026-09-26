@@ -4,11 +4,21 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   mockDebts,
+  mockExpenseTemplates,
   mockExpenses,
+  mockIncomeTemplates,
   mockIncomes,
   mockSavings,
 } from "@/data/mockData";
-import type { Debt, Expense, Income, Saving } from "@/types";
+import { materializeMissing, periodsToEnsure } from "@/lib/payCycle";
+import type {
+  Debt,
+  Expense,
+  Income,
+  RecurringExpenseTemplate,
+  RecurringIncomeTemplate,
+  Saving,
+} from "@/types";
 
 function uid(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -19,6 +29,8 @@ interface FinanceState {
   expenses: Expense[];
   incomes: Income[];
   savings: Saving[];
+  expenseTemplates: RecurringExpenseTemplate[];
+  incomeTemplates: RecurringIncomeTemplate[];
   addDebt: (debt: Omit<Debt, "id">) => void;
   updateDebt: (id: string, patch: Partial<Debt>) => void;
   removeDebt: (id: string) => void;
@@ -32,16 +44,31 @@ interface FinanceState {
   addSaving: (saving: Omit<Saving, "id">) => void;
   updateSaving: (id: string, patch: Partial<Saving>) => void;
   removeSaving: (id: string) => void;
+  addExpenseTemplate: (t: Omit<RecurringExpenseTemplate, "id">) => void;
+  updateExpenseTemplate: (
+    id: string,
+    patch: Partial<RecurringExpenseTemplate>
+  ) => void;
+  removeExpenseTemplate: (id: string) => void;
+  addIncomeTemplate: (t: Omit<RecurringIncomeTemplate, "id">) => void;
+  updateIncomeTemplate: (
+    id: string,
+    patch: Partial<RecurringIncomeTemplate>
+  ) => void;
+  removeIncomeTemplate: (id: string) => void;
+  ensurePeriodsMaterialized: (periodKeys?: string[]) => void;
   resetToMock: () => void;
 }
 
 export const useFinanceStore = create<FinanceState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       debts: mockDebts,
       expenses: mockExpenses,
       incomes: mockIncomes,
       savings: mockSavings,
+      expenseTemplates: mockExpenseTemplates,
+      incomeTemplates: mockIncomeTemplates,
 
       addDebt: (debt) =>
         set((s) => ({ debts: [...s.debts, { ...debt, id: uid("debt") }] })),
@@ -102,14 +129,93 @@ export const useFinanceStore = create<FinanceState>()(
       removeSaving: (id) =>
         set((s) => ({ savings: s.savings.filter((sv) => sv.id !== id) })),
 
+      addExpenseTemplate: (t) =>
+        set((s) => ({
+          expenseTemplates: [
+            ...s.expenseTemplates,
+            { ...t, id: uid("rt-exp") },
+          ],
+        })),
+      updateExpenseTemplate: (id, patch) =>
+        set((s) => ({
+          expenseTemplates: s.expenseTemplates.map((t) =>
+            t.id === id ? { ...t, ...patch } : t
+          ),
+        })),
+      removeExpenseTemplate: (id) =>
+        set((s) => ({
+          expenseTemplates: s.expenseTemplates.filter((t) => t.id !== id),
+        })),
+
+      addIncomeTemplate: (t) =>
+        set((s) => ({
+          incomeTemplates: [
+            ...s.incomeTemplates,
+            { ...t, id: uid("rt-inc") },
+          ],
+        })),
+      updateIncomeTemplate: (id, patch) =>
+        set((s) => ({
+          incomeTemplates: s.incomeTemplates.map((t) =>
+            t.id === id ? { ...t, ...patch } : t
+          ),
+        })),
+      removeIncomeTemplate: (id) =>
+        set((s) => ({
+          incomeTemplates: s.incomeTemplates.filter((t) => t.id !== id),
+        })),
+
+      ensurePeriodsMaterialized: (periodKeys) => {
+        const keys = periodKeys ?? periodsToEnsure();
+        const state = get();
+        let expenses = [...state.expenses];
+        let incomes = [...state.incomes];
+        let changed = false;
+
+        for (const key of keys) {
+          const { expenses: ne, incomes: ni } = materializeMissing(
+            state.expenseTemplates,
+            state.incomeTemplates,
+            expenses,
+            incomes,
+            key,
+            uid
+          );
+          if (ne.length || ni.length) {
+            expenses = [...expenses, ...ne];
+            incomes = [...incomes, ...ni];
+            changed = true;
+          }
+        }
+
+        if (changed) set({ expenses, incomes });
+      },
+
       resetToMock: () =>
         set({
           debts: mockDebts,
           expenses: mockExpenses,
           incomes: mockIncomes,
           savings: mockSavings,
+          expenseTemplates: mockExpenseTemplates,
+          incomeTemplates: mockIncomeTemplates,
         }),
     }),
-    { name: "finanzas-data" }
+    {
+      name: "finanzas-data",
+      version: 2,
+      migrate: (persisted) => {
+        const p = persisted as Partial<FinanceState>;
+        return {
+          ...p,
+          expenseTemplates: p.expenseTemplates?.length
+            ? p.expenseTemplates
+            : mockExpenseTemplates,
+          incomeTemplates: p.incomeTemplates?.length
+            ? p.incomeTemplates
+            : mockIncomeTemplates,
+        };
+      },
+    }
   )
 );

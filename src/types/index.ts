@@ -23,6 +23,11 @@ export type ExpenseCategory =
 export type IncomeType = "Fijo" | "Variable";
 export type SettlementMode = "equal" | "income_share";
 
+/** 1–28 typical; 31 = último día del mes */
+export type DayOfMonth = number;
+
+export type PayWindowKind = "post_cop" | "post_usd";
+
 export interface User {
   id: UserId;
   name: string;
@@ -57,6 +62,8 @@ export interface Expense {
   date: string;
   status: ExpenseStatus;
   recurring?: boolean;
+  templateId?: string;
+  periodKey?: string;
 }
 
 export interface Income {
@@ -68,6 +75,8 @@ export interface Income {
   type: IncomeType;
   date: string;
   notes?: string;
+  templateId?: string;
+  periodKey?: string;
 }
 
 export interface Saving {
@@ -79,6 +88,42 @@ export interface Saving {
   currency: Currency;
   owner: Ownership;
   notes?: string;
+}
+
+export interface RecurringExpenseTemplate {
+  id: string;
+  description: string;
+  category: ExpenseCategory;
+  amount: number;
+  currency: Currency;
+  paidBy: UserId;
+  owner: Ownership;
+  dayOfMonth: DayOfMonth;
+  active: boolean;
+}
+
+export interface RecurringIncomeTemplate {
+  id: string;
+  source: string;
+  owner: UserId;
+  currency: Currency;
+  amount: number;
+  type: IncomeType;
+  dayOfMonth: DayOfMonth;
+  active: boolean;
+  notes?: string;
+}
+
+export interface PayWindow {
+  kind: PayWindowKind;
+  label: string;
+  /** YYYY-MM-DD */
+  start: string;
+  /** YYYY-MM-DD */
+  end: string;
+  /** Mes calendario de referencia para el sueldo ancla */
+  anchorMonth: string;
+  description: string;
 }
 
 export interface AmortizationRow {
