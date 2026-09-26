@@ -15,8 +15,14 @@ import { AlertTriangle, PiggyBank, TrendingUp } from "lucide-react";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/shared/Money";
+import { MonthlyReportButton } from "@/components/shared/MonthlyReportButton";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
 import { formatMoney, toDisplayAmount } from "@/lib/currency";
+import {
+  currentPeriodKey,
+  filterByPeriodKey,
+  formatPeriodLabel,
+} from "@/lib/payCycle";
 import { computeSummary, matchesViewMode } from "@/lib/summary";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
@@ -32,6 +38,8 @@ export default function DashboardPage() {
   const incomes = useFinanceStore((s) => s.incomes);
   const savings = useFinanceStore((s) => s.savings);
 
+  const periodKey = currentPeriodKey();
+
   const summary = useMemo(
     () =>
       computeSummary(
@@ -41,31 +49,38 @@ export default function DashboardPage() {
         savings,
         viewMode,
         displayCurrency,
-        trm
+        trm,
+        periodKey
       ),
-    [incomes, expenses, debts, savings, viewMode, displayCurrency, trm]
+    [incomes, expenses, debts, savings, viewMode, displayCurrency, trm, periodKey]
   );
 
   const chartData = useMemo(() => {
+    const monthIncomes = filterByPeriodKey(incomes, periodKey);
+    const monthExpenses = filterByPeriodKey(expenses, periodKey);
     const owners = ["Yamil", "Liz", "Shared"] as const;
     return owners.map((owner) => {
-      const income = incomes
-        .filter((i) => (owner === "Shared" ? false : i.owner === owner))
+      const income = monthIncomes
+        .filter((i) => i.owner === owner)
         .reduce(
           (s, i) =>
             s + toDisplayAmount(i.amount, i.currency, displayCurrency, trm),
           0
         );
-      const expense = expenses
+      const expense = monthExpenses
         .filter((e) => e.owner === owner && e.status === "Pagado")
         .reduce(
           (s, e) =>
             s + toDisplayAmount(e.amount, e.currency, displayCurrency, trm),
           0
         );
-      return { name: owner === "Shared" ? "Compartido" : owner, Ingresos: income, Gastos: expense };
+      return {
+        name: owner === "Shared" ? "Compartido" : owner,
+        Ingresos: income,
+        Gastos: expense,
+      };
     });
-  }, [incomes, expenses, displayCurrency, trm]);
+  }, [incomes, expenses, displayCurrency, trm, periodKey]);
 
   const alerts = useMemo(() => {
     const today = new Date();
@@ -83,11 +98,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-heading text-xl font-semibold">Dashboard</h2>
-        <p className="text-sm text-muted-foreground">
-          Analytics y balance de la vista actual
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-xl font-semibold">Dashboard</h2>
+          <p className="text-sm text-muted-foreground capitalize">
+            Flujo de {formatPeriodLabel(periodKey)} · no acumula meses anteriores
+          </p>
+        </div>
+        <MonthlyReportButton />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -179,7 +197,7 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Ingresos vs Gastos por propietario</CardTitle>
+          <CardTitle>Ingresos vs Gastos del mes por propietario</CardTitle>
         </CardHeader>
         <CardContent className="h-72">
           <ResponsiveContainer width="100%" height="100%">

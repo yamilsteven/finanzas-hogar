@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
+import { formatMoney } from "@/lib/currency";
 import { matchesViewMode } from "@/lib/summary";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
@@ -47,7 +49,7 @@ export default function AhorrosPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(() => emptySaving(viewMode));
-
+  const [deleteSaving, setDeleteSaving] = useState<Saving | null>(null);
   const visible = useMemo(
     () => savings.filter((s) => matchesViewMode(s, viewMode)),
     [savings, viewMode]

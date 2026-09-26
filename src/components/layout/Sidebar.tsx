@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 export const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ciclo", label: "Ciclo", icon: CalendarRange },
-  { href: "/gastos", label: "Gastos", icon: Receipt },
+  { href: "/gastos", label: "Gastos / Pagos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
   { href: "/ingresos", label: "Ingresos", icon: Wallet },
   { href: "/ahorros", label: "Ahorros", icon: PiggyBank },
@@ -30,7 +30,7 @@ export const navItems = [
 export const mobileNavItems = [
   { href: "/", label: "Inicio", icon: Home },
   { href: "/ciclo", label: "Ciclo", icon: CalendarRange },
-  { href: "/gastos", label: "Gastos", icon: Receipt },
+  { href: "/gastos", label: "Pagos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];

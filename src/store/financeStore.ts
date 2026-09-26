@@ -203,17 +203,21 @@ export const useFinanceStore = create<FinanceState>()(
     }),
     {
       name: "finanzas-data",
-      version: 2,
+      version: 3,
       migrate: (persisted) => {
         const p = persisted as Partial<FinanceState>;
+        const expenseTemplates = p.expenseTemplates?.length
+          ? p.expenseTemplates
+          : mockExpenseTemplates;
+        const existingInc = p.incomeTemplates ?? [];
+        const byId = new Map(existingInc.map((t) => [t.id, t]));
+        for (const t of mockIncomeTemplates) {
+          if (!byId.has(t.id)) byId.set(t.id, t);
+        }
         return {
           ...p,
-          expenseTemplates: p.expenseTemplates?.length
-            ? p.expenseTemplates
-            : mockExpenseTemplates,
-          incomeTemplates: p.incomeTemplates?.length
-            ? p.incomeTemplates
-            : mockIncomeTemplates,
+          expenseTemplates,
+          incomeTemplates: Array.from(byId.values()),
         };
       },
     }

@@ -1,4 +1,5 @@
 import { toDisplayAmount } from "@/lib/currency";
+import { filterByPeriodKey, periodKeyFromDate } from "@/lib/payCycle";
 import type {
   Currency,
   Debt,
@@ -18,6 +19,11 @@ export function matchesViewMode<T extends Ownable>(
   return item.owner === viewMode || item.owner === "Shared";
 }
 
+/**
+ * Resumen de flujo del período (mes).
+ * Ingresos y gastos = solo ese mes.
+ * Deudas = saldo pendiente actual (stock, no flujo).
+ */
 export function computeSummary(
   incomes: Income[],
   expenses: Expense[],
@@ -25,23 +31,24 @@ export function computeSummary(
   savings: Saving[],
   viewMode: ViewMode,
   displayCurrency: Currency,
-  trm: number
+  trm: number,
+  periodKey: string
 ): FinancialSummary {
-  const filteredIncomes =
-    viewMode === "Combined"
-      ? incomes
-      : incomes.filter((i) => i.owner === viewMode);
-
-  const filteredExpenses = expenses.filter((e) => matchesViewMode(e, viewMode));
+  const periodIncomes = filterByPeriodKey(incomes, periodKey).filter((i) =>
+    matchesViewMode(i, viewMode)
+  );
+  const periodExpenses = filterByPeriodKey(expenses, periodKey).filter((e) =>
+    matchesViewMode(e, viewMode)
+  );
   const filteredDebts = debts.filter((d) => matchesViewMode(d, viewMode));
   const filteredSavings = savings.filter((s) => matchesViewMode(s, viewMode));
 
-  const totalIncome = filteredIncomes.reduce(
+  const totalIncome = periodIncomes.reduce(
     (s, i) => s + toDisplayAmount(i.amount, i.currency, displayCurrency, trm),
     0
   );
 
-  const totalExpenses = filteredExpenses
+  const totalExpenses = periodExpenses
     .filter((e) => e.status === "Pagado")
     .reduce(
       (s, e) => s + toDisplayAmount(e.amount, e.currency, displayCurrency, trm),
@@ -76,3 +83,5 @@ export function computeSummary(
     savingsCapacity,
   };
 }
+
+export { periodKeyFromDate };

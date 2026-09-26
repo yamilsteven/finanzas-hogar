@@ -35,6 +35,8 @@ export interface User {
   avatarColor: string;
 }
 
+export type MinPaymentMode = "fixed" | "variable";
+
 export interface Debt {
   id: string;
   name: string;
@@ -45,6 +47,8 @@ export interface Debt {
   annualRate: number;
   rateType: RateType;
   minPayment: number;
+  /** fixed = cuota conocida; variable = TC u otras (se ingresa al pagar) */
+  minPaymentMode?: MinPaymentMode;
   dueDate: string;
   owner: Ownership;
   termMonths?: number;
@@ -64,12 +68,14 @@ export interface Expense {
   recurring?: boolean;
   templateId?: string;
   periodKey?: string;
+  /** Si el pago abonó una deuda */
+  debtId?: string;
 }
 
 export interface Income {
   id: string;
   source: string;
-  owner: UserId;
+  owner: Ownership;
   currency: Currency;
   amount: number;
   type: IncomeType;
@@ -105,7 +111,7 @@ export interface RecurringExpenseTemplate {
 export interface RecurringIncomeTemplate {
   id: string;
   source: string;
-  owner: UserId;
+  owner: Ownership;
   currency: Currency;
   amount: number;
   type: IncomeType;
@@ -173,4 +179,11 @@ export function canEdit(
 export function defaultOwnerForView(viewMode: ViewMode): Ownership {
   if (viewMode === "Combined") return "Shared";
   return viewMode;
+}
+
+export function resolveMinPaymentMode(
+  debt: Pick<Debt, "minPaymentMode" | "type">
+): MinPaymentMode {
+  if (debt.minPaymentMode) return debt.minPaymentMode;
+  return debt.type === "Tarjeta" ? "variable" : "fixed";
 }

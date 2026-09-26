@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { NativeSelect } from "@/components/shared/Field";
 import { formatMoney } from "@/lib/currency";
+import { currentPeriodKey, formatPeriodLabel } from "@/lib/payCycle";
 import { computeSummary } from "@/lib/summary";
 import { fetchTrm } from "@/lib/trm";
 import { useFinanceStore } from "@/store/financeStore";
@@ -27,6 +28,8 @@ export function Header() {
   const incomes = useFinanceStore((s) => s.incomes);
   const savings = useFinanceStore((s) => s.savings);
 
+  const periodKey = currentPeriodKey();
+
   const summary = useMemo(
     () =>
       computeSummary(
@@ -36,9 +39,10 @@ export function Header() {
         savings,
         viewMode,
         displayCurrency,
-        trm
+        trm,
+        periodKey
       ),
-    [incomes, expenses, debts, savings, viewMode, displayCurrency, trm]
+    [incomes, expenses, debts, savings, viewMode, displayCurrency, trm, periodKey]
   );
 
   const refreshTrm = async () => {
@@ -59,7 +63,9 @@ export function Header() {
             <h1 className="font-heading text-lg font-semibold tracking-tight md:text-xl">
               Finanzas del Hogar
             </h1>
-            <p className="text-xs text-muted-foreground">{viewLabel}</p>
+            <p className="text-xs text-muted-foreground">
+              {viewLabel} · flujo de {formatPeriodLabel(periodKey)}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -118,28 +124,28 @@ export function Header() {
 
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <SummaryChip
-            label="Ingresos"
+            label="Ingresos (mes)"
             value={formatMoney(summary.totalIncome, displayCurrency, {
               compact: true,
             })}
             tone="positive"
           />
           <SummaryChip
-            label="Gastos"
+            label="Gastos (mes)"
             value={formatMoney(summary.totalExpenses, displayCurrency, {
               compact: true,
             })}
             tone="neutral"
           />
           <SummaryChip
-            label="Deudas"
+            label="Deudas (saldo)"
             value={formatMoney(summary.totalDebts, displayCurrency, {
               compact: true,
             })}
             tone="warn"
           />
           <SummaryChip
-            label="Balance libre"
+            label="Balance mes"
             value={formatMoney(summary.freeBalance, displayCurrency, {
               compact: true,
             })}

@@ -86,11 +86,10 @@ function sumIncome(
   displayCurrency: Currency,
   trm: number
 ): number {
-  return incomes
-    .filter((i) => i.owner === owner)
-    .reduce(
-      (sum, i) =>
-        sum + toDisplayAmount(i.amount, i.currency, displayCurrency, trm),
-      0
-    );
+  return incomes.reduce((sum, i) => {
+    const amount = toDisplayAmount(i.amount, i.currency, displayCurrency, trm);
+    if (i.owner === owner) return sum + amount;
+    if (i.owner === "Shared") return sum + amount / 2;
+    return sum;
+  }, 0);
 }

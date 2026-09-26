@@ -222,7 +222,7 @@ export function summarizeWindow(
   viewMode: ViewMode
 ): WindowSummary {
   const winIncomes = filterByWindow(incomes, window).filter((i) =>
-    viewMode === "Combined" ? true : i.owner === viewMode
+    matchesOwnerView(i.owner, viewMode)
   );
   const winExpenses = filterByWindow(expenses, window).filter((e) =>
     matchesOwnerView(e.owner, viewMode)

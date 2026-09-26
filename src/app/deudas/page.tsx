@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Calculator, Plus } from "lucide-react";
+import { addMonths, format, parseISO } from "date-fns";
+import { Banknote, Calculator, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
@@ -21,18 +23,22 @@ import {
   buildAmortizationSchedule,
 } from "@/lib/amortization";
 import { formatMoney } from "@/lib/currency";
+import { periodKeyFromDate } from "@/lib/payCycle";
 import { matchesViewMode } from "@/lib/summary";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import {
   canEdit,
   defaultOwnerForView,
+  resolveMinPaymentMode,
   type AmortizationRow,
   type Currency,
   type Debt,
   type DebtType,
+  type MinPaymentMode,
   type Ownership,
   type RateType,
+  type UserId,
 } from "@/types";
 
 const debtTypes: DebtType[] = [
@@ -55,6 +61,7 @@ function emptyDebt(
     annualRate: 12,
     rateType: "EA",
     minPayment: 0,
+    minPaymentMode: "fixed",
     dueDate: new Date().toISOString().slice(0, 10),
     owner: defaultOwnerForView(viewMode),
     termMonths: 24,
@@ -70,6 +77,7 @@ export default function DeudasPage() {
   const addDebt = useFinanceStore((s) => s.addDebt);
   const updateDebt = useFinanceStore((s) => s.updateDebt);
   const removeDebt = useFinanceStore((s) => s.removeDebt);
+  const addExpense = useFinanceStore((s) => s.addExpense);
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,9 +88,22 @@ export default function DeudasPage() {
   const [schedule, setSchedule] = useState<AmortizationRow[]>([]);
   const [extra, setExtra] = useState("");
 
+  const [payOpen, setPayOpen] = useState(false);
+  const [payDebt, setPayDebt] = useState<Debt | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payAsExpense, setPayAsExpense] = useState(true);
+  const [paidBy, setPaidBy] = useState<UserId>("Yamil");
+  const [ownerFilter, setOwnerFilter] = useState<"all" | Ownership>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | DebtType>("all");
+  const [deleteDebt, setDeleteDebt] = useState<Debt | null>(null);
+
   const visible = useMemo(
-    () => debts.filter((d) => matchesViewMode(d, viewMode)),
-    [debts, viewMode]
+    () =>
+      debts
+        .filter((d) => matchesViewMode(d, viewMode))
+        .filter((d) => (ownerFilter === "all" ? true : d.owner === ownerFilter))
+        .filter((d) => (typeFilter === "all" ? true : d.type === typeFilter)),
+    [debts, viewMode, ownerFilter, typeFilter]
   );
 
   const openCreate = () => {
@@ -106,6 +127,7 @@ export default function DeudasPage() {
       annualRate: debt.annualRate,
       rateType: debt.rateType,
       minPayment: debt.minPayment,
+      minPaymentMode: resolveMinPaymentMode(debt),
       dueDate: debt.dueDate,
       owner: debt.owner,
       termMonths: debt.termMonths,
@@ -115,8 +137,8 @@ export default function DeudasPage() {
   };
 
   const save = () => {
-    if (!form.name.trim() || form.balance <= 0) {
-      toast.error("Nombre y saldo pendientes son obligatorios");
+    if (!form.name.trim() || form.balance < 0) {
+      toast.error("Nombre y saldo son obligatorios");
       return;
     }
     if (editingId) {
@@ -144,6 +166,79 @@ export default function DeudasPage() {
     setAmortOpen(true);
   };
 
+  const openPay = (debt: Debt) => {
+    if (!canEdit(debt, viewMode, isAdmin)) {
+      toast.error("Sin permiso para registrar pago");
+      return;
+    }
+    setPayDebt(debt);
+    const mode = resolveMinPaymentMode(debt);
+    setPayAmount(mode === "fixed" && debt.minPayment ? String(debt.minPayment) : "");
+    setPaidBy(viewMode === "Liz" ? "Liz" : "Yamil");
+    setPayAsExpense(true);
+    setPayOpen(true);
+  };
+
+  const confirmPayment = () => {
+    if (!payDebt) return;
+    const amount = Number(payAmount);
+    if (!amount || amount <= 0) {
+      toast.error("Ingresa un monto de pago válido");
+      return;
+    }
+
+    const newBalance = Math.max(
+      0,
+      Math.round((payDebt.balance - amount) * 100) / 100
+    );
+    let nextDue = payDebt.dueDate;
+    try {
+      nextDue = format(addMonths(parseISO(payDebt.dueDate), 1), "yyyy-MM-dd");
+    } catch {
+      // keep current due date
+    }
+
+    updateDebt(payDebt.id, {
+      balance: newBalance,
+      dueDate: newBalance > 0 ? nextDue : payDebt.dueDate,
+    });
+
+    if (payAsExpense) {
+      const today = new Date().toISOString().slice(0, 10);
+      addExpense({
+        description: `Pago deuda: ${payDebt.name}`,
+        category: "Vivienda",
+        amount,
+        currency: payDebt.currency,
+        paidBy,
+        owner: payDebt.owner,
+        date: today,
+        status: "Pagado",
+        periodKey: periodKeyFromDate(today),
+      });
+    }
+
+    if (amortDebt?.id === payDebt.id) {
+      setAmortDebt({ ...payDebt, balance: newBalance });
+      setSchedule(
+        buildAmortizationSchedule(
+          newBalance,
+          payDebt.annualRate,
+          payDebt.rateType,
+          payDebt.minPayment,
+          payDebt.termMonths ?? 360
+        )
+      );
+    }
+
+    setPayOpen(false);
+    toast.success(
+      newBalance === 0
+        ? `${payDebt.name} liquidada`
+        : `Pago registrado. Nuevo saldo: ${formatMoney(newBalance, payDebt.currency)}`
+    );
+  };
+
   const applyExtra = () => {
     if (!amortDebt) return;
     const amount = Number(extra);
@@ -163,7 +258,9 @@ export default function DeudasPage() {
     setAmortDebt({ ...amortDebt, balance: newBalance });
     setSchedule(next);
     setExtra("");
-    toast.success(`Abono aplicado. Nuevo saldo: ${formatMoney(newBalance, amortDebt.currency)}`);
+    toast.success(
+      `Abono aplicado. Nuevo saldo: ${formatMoney(newBalance, amortDebt.currency)}`
+    );
   };
 
   return (
@@ -172,7 +269,7 @@ export default function DeudasPage() {
         <div>
           <h2 className="font-heading text-xl font-semibold">Deudas & Créditos</h2>
           <p className="text-sm text-muted-foreground">
-            Amortización, cuotas y abonos extraordinarios
+            Cada pago baja el saldo pendiente y puede ir al gasto del mes
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -180,6 +277,54 @@ export default function DeudasPage() {
           Nueva deuda
         </Button>
       </div>
+
+      <Card size="sm">
+        <CardContent className="flex flex-wrap items-end gap-2 px-3 py-3">
+          <Field label="Owner" className="min-w-[120px] flex-1">
+            <NativeSelect
+              value={ownerFilter}
+              onChange={(e) =>
+                setOwnerFilter(e.target.value as "all" | Ownership)
+              }
+            >
+              <option value="all">Todos</option>
+              <option value="Yamil">Yamil</option>
+              <option value="Liz">Liz</option>
+              <option value="Shared">Shared</option>
+            </NativeSelect>
+          </Field>
+          <Field label="Tipo" className="min-w-[140px] flex-1">
+            <NativeSelect
+              value={typeFilter}
+              onChange={(e) =>
+                setTypeFilter(e.target.value as "all" | DebtType)
+              }
+            >
+              <option value="all">Todos</option>
+              {debtTypes.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+          {(ownerFilter !== "all" || typeFilter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setOwnerFilter("all");
+                setTypeFilter("all");
+              }}
+            >
+              Limpiar
+            </Button>
+          )}
+          <p className="w-full text-xs text-muted-foreground sm:ml-auto sm:w-auto">
+            {visible.length} deuda{visible.length === 1 ? "" : "s"}
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-3 md:grid-cols-2">
         {visible.map((d) => (
@@ -195,7 +340,7 @@ export default function DeudasPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Saldo</span>
+                <span className="text-muted-foreground">Saldo pendiente</span>
                 <Money
                   amount={d.balance}
                   currency={d.currency}
@@ -209,14 +354,24 @@ export default function DeudasPage() {
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Cuota mín.</span>
-                <Money amount={d.minPayment} currency={d.currency} />
+                <span className="text-muted-foreground">Cuota</span>
+                {resolveMinPaymentMode(d) === "variable" ? (
+                  <span className="text-xs text-amber-700 dark:text-amber-300">
+                    Variable (se define al pagar)
+                  </span>
+                ) : (
+                  <Money amount={d.minPayment} currency={d.currency} />
+                )}
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Vence</span>
+                <span className="text-muted-foreground">Próx. vencimiento</span>
                 <span>{d.dueDate}</span>
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
+                <Button size="sm" onClick={() => openPay(d)}>
+                  <Banknote className="size-3.5" />
+                  Registrar pago
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => openAmort(d)}>
                   <Calculator className="size-3.5" />
                   Amortización
@@ -233,8 +388,7 @@ export default function DeudasPage() {
                       toast.error("Sin permiso");
                       return;
                     }
-                    removeDebt(d.id);
-                    toast.success("Eliminada");
+                    setDeleteDebt(d);
                   }}
                 >
                   Eliminar
@@ -276,9 +430,16 @@ export default function DeudasPage() {
           <Field label="Tipo">
             <NativeSelect
               value={form.type}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, type: e.target.value as DebtType }))
-              }
+              onChange={(e) => {
+                const type = e.target.value as DebtType;
+                setForm((f) => ({
+                  ...f,
+                  type,
+                  minPaymentMode:
+                    type === "Tarjeta" ? "variable" : f.minPaymentMode,
+                  minPayment: type === "Tarjeta" ? 0 : f.minPayment,
+                }));
+              }}
             >
               {debtTypes.map((t) => (
                 <option key={t} value={t}>
@@ -317,6 +478,51 @@ export default function DeudasPage() {
             </NativeSelect>
           </Field>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Tipo de cuota">
+            <NativeSelect
+              value={form.minPaymentMode}
+              onChange={(e) => {
+                const mode = e.target.value as MinPaymentMode;
+                setForm((f) => ({
+                  ...f,
+                  minPaymentMode: mode,
+                  minPayment: mode === "variable" ? 0 : f.minPayment,
+                }));
+              }}
+            >
+              <option value="fixed">Fija (crédito / hipoteca)</option>
+              <option value="variable">Variable (tarjeta)</option>
+            </NativeSelect>
+          </Field>
+          <Field
+            label={
+              form.minPaymentMode === "variable"
+                ? "Referencia opcional"
+                : "Cuota fija"
+            }
+          >
+            <Input
+              type="number"
+              min={0}
+              disabled={form.minPaymentMode === "variable"}
+              placeholder={
+                form.minPaymentMode === "variable"
+                  ? "Se ingresa al pagar"
+                  : undefined
+              }
+              value={
+                form.minPaymentMode === "variable" ? "" : form.minPayment || ""
+              }
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  minPayment: Number(e.target.value) || 0,
+                }))
+              }
+            />
+          </Field>
+        </div>
         <div className="grid grid-cols-3 gap-3">
           <Field label="Tasa">
             <Input
@@ -345,15 +551,15 @@ export default function DeudasPage() {
               <option value="MV">MV</option>
             </NativeSelect>
           </Field>
-          <Field label="Cuota mín.">
+          <Field label="Plazo (meses)">
             <Input
               type="number"
-              min={0}
-              value={form.minPayment || ""}
+              min={1}
+              value={form.termMonths || ""}
               onChange={(e) =>
                 setForm((f) => ({
                   ...f,
-                  minPayment: Number(e.target.value) || 0,
+                  termMonths: Number(e.target.value) || undefined,
                 }))
               }
             />
@@ -385,32 +591,105 @@ export default function DeudasPage() {
             </NativeSelect>
           </Field>
         </div>
-        <Field label="Plazo (meses)">
-          <Input
-            type="number"
-            min={1}
-            value={form.termMonths || ""}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                termMonths: Number(e.target.value) || undefined,
-              }))
-            }
-          />
-        </Field>
       </ResponsiveForm>
 
-      <Dialog open={amortOpen} onOpenChange={setAmortOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              Amortización — {amortDebt?.name}
-            </DialogTitle>
+            <DialogTitle>Registrar pago — {payDebt?.name}</DialogTitle>
+          </DialogHeader>
+          {payDebt && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Saldo actual:{" "}
+                <span className="font-semibold text-foreground">
+                  {formatMoney(payDebt.balance, payDebt.currency)}
+                </span>
+                {Number(payAmount) > 0 && (
+                  <>
+                    {" "}
+                    → nuevo:{" "}
+                    <span className="font-semibold text-teal-700 dark:text-teal-300">
+                      {formatMoney(
+                        Math.max(0, payDebt.balance - Number(payAmount)),
+                        payDebt.currency
+                      )}
+                    </span>
+                  </>
+                )}
+              </p>
+              <Field label={`Monto del pago (${payDebt.currency})`}>
+                <Input
+                  type="number"
+                  min={0}
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  placeholder={
+                    resolveMinPaymentMode(payDebt) === "variable"
+                      ? "Cuota del extracto este mes"
+                      : undefined
+                  }
+                />
+              </Field>
+              {resolveMinPaymentMode(payDebt) === "fixed" &&
+                payDebt.minPayment > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPayAmount(String(payDebt.minPayment))}
+                  >
+                    Usar cuota fija
+                  </Button>
+                )}
+              {resolveMinPaymentMode(payDebt) === "variable" && (
+                <p className="text-xs text-muted-foreground">
+                  Tarjeta / cuota variable: escribe el valor del extracto de este
+                  mes.
+                </p>
+              )}
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={payAsExpense}
+                  onChange={(e) => setPayAsExpense(e.target.checked)}
+                  className="size-4 rounded border"
+                />
+                Registrar también como gasto del mes
+              </label>
+              {payAsExpense && (
+                <Field label="Pagado por">
+                  <NativeSelect
+                    value={paidBy}
+                    onChange={(e) => setPaidBy(e.target.value as UserId)}
+                  >
+                    <option value="Yamil">Yamil</option>
+                    <option value="Liz">Liz</option>
+                  </NativeSelect>
+                </Field>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setPayOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={confirmPayment}>Confirmar pago</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={amortOpen} onOpenChange={setAmortOpen}>
+        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Amortización — {amortDebt?.name}</DialogTitle>
           </DialogHeader>
           {amortDebt && (
-            <div className="space-y-3 overflow-hidden flex flex-col min-h-0">
+            <div className="flex min-h-0 flex-col space-y-3 overflow-hidden">
               <div className="flex flex-wrap items-end gap-2">
-                <Field label="Abono extraordinario" className="flex-1 min-w-[140px]">
+                <Field
+                  label="Abono extraordinario"
+                  className="min-w-[140px] flex-1"
+                >
                   <Input
                     type="number"
                     min={0}
@@ -426,7 +705,7 @@ export default function DeudasPage() {
                 {formatMoney(amortDebt.balance, amortDebt.currency)} · Vista en{" "}
                 {displayCurrency}
               </p>
-              <div className="overflow-auto rounded-lg border max-h-[50vh]">
+              <div className="max-h-[50vh] overflow-auto rounded-lg border">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-muted">
                     <tr>
@@ -457,16 +736,35 @@ export default function DeudasPage() {
                     ))}
                   </tbody>
                 </table>
-                {schedule.length > 60 && (
-                  <p className="p-2 text-center text-xs text-muted-foreground">
-                    Mostrando 60 de {schedule.length} periodos
-                  </p>
-                )}
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteDebt)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteDebt(null);
+        }}
+        title="¿Eliminar deuda?"
+        description={
+          deleteDebt
+            ? `Se eliminará «${deleteDebt.name}» (${deleteDebt.entity}).`
+            : ""
+        }
+        impact={
+          deleteDebt
+            ? `Dejará de contar en el total de deudas del header/dashboard (saldo actual ${formatMoney(deleteDebt.balance, deleteDebt.currency)}). Los pagos ya registrados como gastos del mes no se borran.`
+            : undefined
+        }
+        onConfirm={() => {
+          if (!deleteDebt) return;
+          removeDebt(deleteDebt.id);
+          toast.success("Deuda eliminada · totales actualizados");
+          setDeleteDebt(null);
+        }}
+      />
     </div>
   );
 }
