@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finanzas Y&L — Hogar
 
-## Getting Started
+App web responsive de gestión financiera del hogar para **Yamil** y **Liz**.
 
-First, run the development server:
+## Stack
+
+- Next.js (App Router) + TypeScript
+- Tailwind CSS + Shadcn UI + Lucide
+- Zustand (sesión + datos mock con persistencia local)
+- Recharts (dashboard)
+
+## Arranque
 
 ```bash
+cd finanzas-hogar
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Módulos
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Ruta | Descripción |
+|------|-------------|
+| `/` | Dashboard: gráficos, capacidad de ahorro, alertas de vencimiento |
+| `/gastos` | Gastos + cierre de cuentas (50/50 o % ingresos) |
+| `/deudas` | Deudas, tabla de amortización, abono extraordinario |
+| `/ingresos` | Ingresos bimoneda USD/COP con TRM |
+| `/ahorros` | Metas e inversiones |
+| `/perfil` | User switcher, tema, modo admin, reset mock |
 
-## Learn More
+## Ownership
 
-To learn more about Next.js, take a look at the following resources:
+Cada registro tiene `owner`: `Yamil` | `Liz` | `Shared`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Vista individual: solo editas tus ítems (Shared siempre editable).
+- Vista Familiar / modo Admin: edición completa.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## TRM
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Orden de fuentes: datos.gov.co → open.er-api.com → valor estático (~4100).
