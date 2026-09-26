@@ -40,3 +40,16 @@ Cada registro tiene `owner`: `Yamil` | `Liz` | `Shared`.
 ## TRM
 
 Orden de fuentes: datos.gov.co → open.er-api.com → valor estático (~4100).
+
+## Deploy (Netlify)
+
+1. Entra a [https://app.netlify.com](https://app.netlify.com) e inicia sesión con GitHub.
+2. **Add new site → Import an existing project → GitHub**.
+3. Elige el repo `yamilsteven/finanzas-hogar`.
+4. Netlify detecta Next.js. Confirma (o deja que use `netlify.toml`):
+   - **Build command:** `npm run build`
+   - **Publish directory:** `.next`
+5. **Deploy site**.
+
+Cada `git push` a `master` vuelve a desplegar automáticamente.
+URL típica: `https://finanzas-hogar.netlify.app` (puedes cambiar el nombre en Site settings → Domain management).

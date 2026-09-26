@@ -1,0 +1,16 @@
+# Netlify + Next.js (App Router)
+# El adaptador OpenNext se aplica automáticamente; no hace falta pinnear el plugin.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Preview deploys en cada PR / branch
+[context.deploy-preview]
+  command = "npm run build"
+
+[context.branch-deploy]
+  command = "npm run build"
