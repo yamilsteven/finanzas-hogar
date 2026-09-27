@@ -61,6 +61,11 @@ export default function AdminPage() {
   /** Último link de invitación generado (crear hogar u otra invitación) */
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const [lastInviteLabel, setLastInviteLabel] = useState<string | null>(null);
+  /** Owner vinculado porque ya tenía cuenta Auth (sin invite) */
+  const [lastLinkedOwner, setLastLinkedOwner] = useState<{
+    email: string;
+    name: string;
+  } | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -133,15 +138,35 @@ export default function AdminPage() {
       toast.error(res.error);
       return;
     }
-    if (res.data?.mode === "member_linked") {
-      toast.success("Hogar creado y owner ya vinculado (tenía cuenta)");
-    } else if (res.data?.invite_token) {
-      toast.success("Hogar creado · copia el link del owner abajo");
+    if (res.data?.invite_token) {
+      if (res.data.mode === "member_linked") {
+        setLastLinkedOwner({
+          email: createEmail.trim(),
+          name: createDisplay.trim() || createEmail.trim(),
+        });
+        toast.success(
+          "Hogar creado · owner ya tenía cuenta, pero igual tienes link para enviarle"
+        );
+      } else {
+        setLastLinkedOwner(null);
+        toast.success("Hogar creado · copia el link del owner abajo");
+      }
       await copyLink(
         res.data.invite_token,
         createDisplay || createEmail || "owner"
       );
+    } else if (res.data?.mode === "member_linked") {
+      setLastInviteUrl(null);
+      setLastInviteLabel(null);
+      setLastLinkedOwner({
+        email: createEmail.trim(),
+        name: createDisplay.trim() || createEmail.trim(),
+      });
+      toast.success(
+        "Hogar creado · el owner ya tenía cuenta y quedó vinculado"
+      );
     } else {
+      setLastLinkedOwner(null);
       toast.success("Hogar creado");
     }
     setCreateName("");
@@ -215,7 +240,11 @@ export default function AdminPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Crear hogar</CardTitle>
+            <CardTitle className="text-base">1. Crear hogar + link del owner</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Crea el hogar y genera el link del <strong>primer usuario (owner)</strong>{" "}
+              para enviárselo por WhatsApp.
+            </p>
           </CardHeader>
           <CardContent>
             <form onSubmit={onCreateHousehold} className="space-y-3">
@@ -254,19 +283,38 @@ export default function AdminPage() {
               </Field>
               <Button type="submit" disabled={creating} className="w-full">
                 <Plus className="size-4" />
-                {creating ? "Creando…" : "Crear hogar"}
+                {creating
+                  ? "Creando…"
+                  : "Crear hogar y copiar link del owner"}
               </Button>
               <p className="text-[11px] text-muted-foreground">
-                No enviamos correo. Al crear, se genera el link del owner para
-                que lo copies y lo envíes por WhatsApp.
+                Ese link es para el owner (email de arriba). Para un 2.º
+                miembro, selecciona el hogar abajo y usa «Invitar otro
+                miembro».
               </p>
             </form>
+
+            {lastLinkedOwner && (
+              <div className="mt-4 space-y-2 rounded-lg border border-sky-500/30 bg-sky-500/10 p-3">
+                <p className="text-sm font-medium text-sky-950">
+                  Owner ya tenía cuenta
+                </p>
+                <p className="text-xs text-sky-950/80">
+                  <strong>{lastLinkedOwner.name}</strong> (
+                  {lastLinkedOwner.email}) quedó vinculado. Igual puedes
+                  enviarle el link de abajo para que entre directo al hogar.
+                </p>
+              </div>
+            )}
 
             {lastInviteUrl && (
               <div className="mt-4 space-y-2 rounded-lg border border-teal-500/30 bg-teal-500/10 p-3">
                 <p className="text-sm font-medium text-teal-900">
-                  Link de invitación
+                  Link para enviar
                   {lastInviteLabel ? ` · ${lastInviteLabel}` : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Cópialo y mándalo por WhatsApp. No hay correo automático.
                 </p>
                 <p className="break-all rounded-md bg-background/80 px-2 py-1.5 font-mono text-xs">
                   {lastInviteUrl}
@@ -285,7 +333,7 @@ export default function AdminPage() {
                   }}
                 >
                   <Copy className="size-3.5" />
-                  Copiar link otra vez
+                  Copiar link de invitación
                 </Button>
               </div>
             )}
@@ -404,7 +452,7 @@ export default function AdminPage() {
                 onClick={() => {
                   if (
                     !confirm(
-                      `¿BORRAR el hogar «${selected.name}» por completo?\n\nSe eliminan miembros, invitaciones y todas las finanzas. No se puede deshacer.`
+                      `¿BORRAR el hogar «${selected.name}» por completo?\n\nSe eliminan miembros, invitaciones y finanzas.\nLas cuentas de login (Auth) NO se borran: si recreas el hogar con el mismo email, el owner se vincula solo.`
                     )
                   ) {
                     return;
@@ -472,16 +520,18 @@ export default function AdminPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Invitar miembro</CardTitle>
+                <CardTitle className="text-base">
+                  2. Invitar otro miembro (pareja / 2.º usuario)
+                </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Para agregar a la pareja u otro adulto: email + nombre + key
-                  (ej. <code className="text-[10px]">b</code>). Se copia un
-                  link; no se envía correo automático.
+                  Esto <strong>no</strong> es el owner. Sirve para agregar a la
+                  pareja u otro adulto al hogar ya creado. Se copia un link
+                  aparte; no se envía correo.
                 </p>
               </CardHeader>
               <CardContent>
                 <form onSubmit={onInvite} className="space-y-3">
-                  <Field label="Email">
+                  <Field label="Email del 2.º miembro">
                     <Input
                       type="email"
                       value={invEmail}
@@ -524,7 +574,9 @@ export default function AdminPage() {
                   </div>
                   <Button type="submit" disabled={inviting} className="w-full">
                     <Link2 className="size-4" />
-                    {inviting ? "Creando…" : "Crear invitación y copiar link"}
+                    {inviting
+                      ? "Creando…"
+                      : "Copiar link del 2.º miembro"}
                   </Button>
                 </form>
               </CardContent>
@@ -533,10 +585,11 @@ export default function AdminPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Invitaciones</CardTitle>
+              <CardTitle className="text-base">Invitaciones de este hogar</CardTitle>
               <p className="text-xs text-muted-foreground">
-                «pending» = creó cuenta pero aún no abrió el link y aceptó.
-                Cuando acepte, pasa a «accepted» y aparece en Miembros activos.
+                Aquí salen el link del owner y los del 2.º+ miembro. «Pendiente
+                de aceptar» = todavía no abrió el link. Usa{" "}
+                <strong>Copiar link</strong> para reenviarlo.
               </p>
             </CardHeader>
             <CardContent className="space-y-2">
