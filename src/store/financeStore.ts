@@ -13,6 +13,7 @@ import {
 import { materializeMissing, periodsToEnsure } from "@/lib/payCycle";
 import type {
   Debt,
+  Dependent,
   Expense,
   Income,
   RecurringExpenseTemplate,
@@ -31,6 +32,7 @@ interface FinanceState {
   savings: Saving[];
   expenseTemplates: RecurringExpenseTemplate[];
   incomeTemplates: RecurringIncomeTemplate[];
+  dependents: Dependent[];
   addDebt: (debt: Omit<Debt, "id">) => void;
   updateDebt: (id: string, patch: Partial<Debt>) => void;
   removeDebt: (id: string) => void;
@@ -56,8 +58,13 @@ interface FinanceState {
     patch: Partial<RecurringIncomeTemplate>
   ) => void;
   removeIncomeTemplate: (id: string) => void;
+  addDependent: (d: Omit<Dependent, "id">) => void;
+  updateDependent: (id: string, patch: Partial<Omit<Dependent, "id">>) => void;
+  removeDependent: (id: string) => void;
   ensurePeriodsMaterialized: (periodKeys?: string[]) => void;
   resetToMock: () => void;
+  /** Borra todo el dato financiero local (útil para onboarding en limpio) */
+  clearAllData: () => void;
 }
 
 export const useFinanceStore = create<FinanceState>()(
@@ -69,6 +76,7 @@ export const useFinanceStore = create<FinanceState>()(
       savings: mockSavings,
       expenseTemplates: mockExpenseTemplates,
       incomeTemplates: mockIncomeTemplates,
+      dependents: [],
 
       addDebt: (debt) =>
         set((s) => ({ debts: [...s.debts, { ...debt, id: uid("debt") }] })),
@@ -165,6 +173,21 @@ export const useFinanceStore = create<FinanceState>()(
           incomeTemplates: s.incomeTemplates.filter((t) => t.id !== id),
         })),
 
+      addDependent: (d) =>
+        set((s) => ({
+          dependents: [...s.dependents, { ...d, id: uid("dep") }],
+        })),
+      updateDependent: (id, patch) =>
+        set((s) => ({
+          dependents: s.dependents.map((dep) =>
+            dep.id === id ? { ...dep, ...patch } : dep
+          ),
+        })),
+      removeDependent: (id) =>
+        set((s) => ({
+          dependents: s.dependents.filter((dep) => dep.id !== id),
+        })),
+
       ensurePeriodsMaterialized: (periodKeys) => {
         const keys = periodKeys ?? periodsToEnsure();
         const state = get();
@@ -199,25 +222,67 @@ export const useFinanceStore = create<FinanceState>()(
           savings: mockSavings,
           expenseTemplates: mockExpenseTemplates,
           incomeTemplates: mockIncomeTemplates,
+          dependents: [],
+        }),
+
+      clearAllData: () =>
+        set({
+          debts: [],
+          expenses: [],
+          incomes: [],
+          savings: [],
+          expenseTemplates: [],
+          incomeTemplates: [],
+          dependents: [],
         }),
     }),
     {
       name: "finanzas-data",
-      version: 3,
-      migrate: (persisted) => {
+      version: 5,
+      migrate: (persisted, fromVersion) => {
         const p = persisted as Partial<FinanceState>;
-        const expenseTemplates = p.expenseTemplates?.length
-          ? p.expenseTemplates
-          : mockExpenseTemplates;
-        const existingInc = p.incomeTemplates ?? [];
-        const byId = new Map(existingInc.map((t) => [t.id, t]));
-        for (const t of mockIncomeTemplates) {
-          if (!byId.has(t.id)) byId.set(t.id, t);
+        let expenseTemplates = p.expenseTemplates?.length
+          ? [...p.expenseTemplates]
+          : [...mockExpenseTemplates];
+
+        // v4: recibos públicos separados (agua / gas / energía)
+        if (fromVersion < 4) {
+          expenseTemplates = expenseTemplates.filter(
+            (t) =>
+              !(
+                t.id === "rt-exp-2" &&
+                !("utilityService" in t && t.utilityService)
+              )
+          );
+          const byId = new Map(expenseTemplates.map((t) => [t.id, t]));
+          for (const t of mockExpenseTemplates) {
+            if (!byId.has(t.id)) byId.set(t.id, t);
+          }
+          expenseTemplates = Array.from(byId.values());
         }
+
+        const existingInc = p.incomeTemplates ?? [];
+        const incById = new Map(existingInc.map((t) => [t.id, t]));
+        for (const t of mockIncomeTemplates) {
+          if (!incById.has(t.id)) incById.set(t.id, t);
+        }
+
+        let expenses = p.expenses?.length ? [...p.expenses] : [...mockExpenses];
+        if (fromVersion < 4) {
+          const ids = new Set(expenses.map((e) => e.id));
+          for (const e of mockExpenses) {
+            if (e.utilityService && !ids.has(e.id)) {
+              expenses.push(e);
+            }
+          }
+        }
+
         return {
           ...p,
+          expenses,
           expenseTemplates,
-          incomeTemplates: Array.from(byId.values()),
+          incomeTemplates: Array.from(incById.values()),
+          dependents: p.dependents ?? [],
         };
       },
     }

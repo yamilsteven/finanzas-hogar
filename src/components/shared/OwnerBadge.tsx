@@ -1,23 +1,33 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { colorForKey } from "@/lib/householdPeople";
 import type { Ownership } from "@/types";
 import { cn } from "@/lib/utils";
 
-const styles: Record<Ownership, string> = {
-  Yamil: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
-  Liz: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200",
-  Shared:
-    "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
-};
-
 export function OwnerBadge({ owner }: { owner: Ownership }) {
+  if (owner === "Shared") {
+    return (
+      <Badge
+        variant="secondary"
+        className="border-0 bg-amber-100 font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
+      >
+        Compartido
+      </Badge>
+    );
+  }
+
+  const color = colorForKey(owner);
   return (
     <Badge
       variant="secondary"
-      className={cn("border-0 font-medium", styles[owner])}
+      className={cn("border-0 font-medium")}
+      style={{
+        backgroundColor: `${color}22`,
+        color,
+      }}
     >
-      {owner === "Shared" ? "Compartido" : owner}
+      {owner}
     </Badge>
   );
 }

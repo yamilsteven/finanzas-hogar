@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { RefreshCw, Users, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { NativeSelect } from "@/components/shared/Field";
+import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
+import { APP_NAME } from "@/lib/brand";
 import { formatMoney } from "@/lib/currency";
 import { currentPeriodKey, formatPeriodLabel } from "@/lib/payCycle";
 import { computeSummary } from "@/lib/summary";
@@ -28,7 +29,14 @@ export function Header() {
   const incomes = useFinanceStore((s) => s.incomes);
   const savings = useFinanceStore((s) => s.savings);
 
+  const { people, isMultiPerson, householdName } = useHouseholdPeople();
   const periodKey = currentPeriodKey();
+
+  useEffect(() => {
+    if (!isMultiPerson && viewMode !== "Combined") {
+      setViewMode("Combined");
+    }
+  }, [isMultiPerson, viewMode, setViewMode]);
 
   const summary = useMemo(
     () =>
@@ -52,8 +60,12 @@ export function Header() {
 
   const viewLabel =
     viewMode === "Combined"
-      ? "Vista Familiar"
+      ? isMultiPerson
+        ? "Vista del hogar"
+        : "Mi hogar"
       : `Ver como ${viewMode}`;
+
+  const title = householdName || APP_NAME;
 
   return (
     <header className="sticky top-0 z-30 border-b bg-background/90 backdrop-blur">
@@ -61,7 +73,7 @@ export function Header() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="font-heading text-lg font-semibold tracking-tight md:text-xl">
-              Finanzas del Hogar
+              {title}
             </h1>
             <p className="text-xs text-muted-foreground">
               {viewLabel} · flujo de {formatPeriodLabel(periodKey)}
@@ -69,30 +81,43 @@ export function Header() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-lg border p-0.5 bg-muted/40">
-              {(
-                [
-                  { mode: "Yamil" as ViewMode, icon: User },
-                  { mode: "Liz" as ViewMode, icon: User },
-                  { mode: "Combined" as ViewMode, icon: Users },
-                ] as const
-              ).map(({ mode, icon: Icon }) => (
+            {isMultiPerson ? (
+              <div className="flex rounded-lg border p-0.5 bg-muted/40">
+                {people.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setViewMode(p.id)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                      viewMode === p.id
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <User className="size-3.5" />
+                    {p.name}
+                  </button>
+                ))}
                 <button
-                  key={mode}
                   type="button"
-                  onClick={() => setViewMode(mode)}
+                  onClick={() => setViewMode("Combined")}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-                    viewMode === mode
+                    viewMode === "Combined"
                       ? "bg-background text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Icon className="size-3.5" />
-                  {mode === "Combined" ? "Familiar" : mode}
+                  <Users className="size-3.5" />
+                  Hogar
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground">
+                {people[0]?.name ?? "Personal"}
+              </div>
+            )}
 
             <NativeSelect
               className="w-[88px]"
@@ -167,21 +192,19 @@ function SummaryChip({
   tone: "positive" | "warn" | "neutral";
 }) {
   return (
-    <Card size="sm" className="py-2">
-      <CardContent className="px-3 py-0">
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
-        <p
-          className={cn(
-            "text-sm font-semibold tabular-nums md:text-base",
-            tone === "positive" && "text-teal-700 dark:text-teal-300",
-            tone === "warn" && "text-amber-700 dark:text-amber-300"
-          )}
-        >
-          {value}
-        </p>
-      </CardContent>
-    </Card>
+    <div
+      className={cn(
+        "rounded-lg border px-3 py-2",
+        tone === "positive" && "border-teal-200/60 dark:border-teal-900",
+        tone === "warn" && "border-amber-200/60 dark:border-amber-900"
+      )}
+    >
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="font-heading text-sm font-semibold tabular-nums md:text-base">
+        {value}
+      </p>
+    </div>
   );
 }

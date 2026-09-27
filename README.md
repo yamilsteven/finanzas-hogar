@@ -1,62 +1,36 @@
-# Finanzas Y&L — Hogar
+# Finanzas Hogar
 
-App web responsive de gestión financiera del hogar para **Yamil** y **Liz**.
+App web responsive de gestión financiera del hogar (1 o más personas). Multimoneda COP/USD. Soft launch con Supabase Auth + Postgres.
 
 ## Stack
 
 - Next.js (App Router) + TypeScript
 - Tailwind CSS + Shadcn UI + Lucide
-- Zustand (sesión + datos mock con persistencia local)
-- Recharts (dashboard)
+- Zustand (sesión + datos; migración a Supabase en curso)
+- Supabase (auth, multi-tenancy por hogares, RLS)
+- Recharts
 
 ## Arranque
 
 ```bash
 cd finanzas-hogar
+cp env.example .env.local   # URL base + anon key (sin /rest/v1/)
 npm install
 npm run dev
 ```
 
-Abre [http://localhost:3000](http://localhost:3000).
+Abre [http://localhost:3000](http://localhost:3000) → login.
 
-## Módulos
+## Hogares
 
-| Ruta | Descripción |
-|------|-------------|
-| `/` | Dashboard: gráficos, capacidad de ahorro, alertas de vencimiento |
-| `/gastos` | Gastos + cierre de cuentas (50/50 o % ingresos) |
-| `/deudas` | Deudas, tabla de amortización, abono extraordinario |
-| `/ingresos` | Ingresos bimoneda USD/COP con TRM |
-| `/ahorros` | Metas e inversiones |
-| `/perfil` | User switcher, tema, modo admin, reset mock |
+- Un **hogar** puede tener 1 persona (amigo/a que vive solo) o varias.
+- Los datos se aíslan por `household_id` (RLS).
+- La UI de “vista por miembro” y cierre Shared solo aparece con 2+ miembros.
 
 ## Ownership
 
-Cada registro tiene `owner`: `Yamil` | `Liz` | `Shared`.
+Cada registro tiene `owner`: nombre del miembro o `Shared`.
 
-- Vista individual: solo editas tus ítems (Shared siempre editable).
-- Vista Familiar / modo Admin: edición completa.
+## Variables
 
-## Ciclo de pagos (Yamil)
-
-- **Ventana COP:** día 20 → fin de mes (sueldo COP)
-- **Ventana USD:** día 1 → 19 (sueldo USD del cierre anterior)
-- Plantillas recurrentes en **Gastos → Plantillas** se materializan al abrir cada mes
-- Ruta: `/ciclo`
-
-## TRM
-
-Orden de fuentes: datos.gov.co → open.er-api.com → valor estático (~4100).
-
-## Deploy (Netlify)
-
-1. Entra a [https://app.netlify.com](https://app.netlify.com) e inicia sesión con GitHub.
-2. **Add new site → Import an existing project → GitHub**.
-3. Elige el repo `yamilsteven/finanzas-hogar`.
-4. Netlify detecta Next.js. Confirma (o deja que use `netlify.toml`):
-   - **Build command:** `npm run build`
-   - **Publish directory:** `.next`
-5. **Deploy site**.
-
-Cada `git push` a `master` vuelve a desplegar automáticamente.
-URL típica: `https://finanzas-hogar.netlify.app` (puedes cambiar el nombre en Site settings → Domain management).
+Ver `env.example`. Nunca uses la `service_role` en el frontend.

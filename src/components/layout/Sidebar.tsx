@@ -12,14 +12,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
-  CalendarRange,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { APP_NAME, APP_SHORT } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/store/authStore";
 
-export const navItems = [
+const baseNavItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/ciclo", label: "Ciclo", icon: CalendarRange },
   { href: "/gastos", label: "Gastos / Pagos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
   { href: "/ingresos", label: "Ingresos", icon: Wallet },
@@ -27,13 +28,34 @@ export const navItems = [
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
 
-export const mobileNavItems = [
+const baseMobileNavItems = [
   { href: "/", label: "Inicio", icon: Home },
-  { href: "/ciclo", label: "Ciclo", icon: CalendarRange },
   { href: "/gastos", label: "Pagos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
+  { href: "/ingresos", label: "Ingresos", icon: Wallet },
+  { href: "/ahorros", label: "Ahorros", icon: PiggyBank },
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
+
+function useNavItems() {
+  const isPlatformAdmin = useAuthStore((s) => s.isPlatformAdmin);
+  if (!isPlatformAdmin) {
+    return { navItems: baseNavItems, mobileNavItems: baseMobileNavItems };
+  }
+  const adminItem = { href: "/admin", label: "Admin", icon: Shield };
+  return {
+    navItems: [
+      ...baseNavItems.slice(0, -1),
+      adminItem,
+      baseNavItems[baseNavItems.length - 1],
+    ],
+    mobileNavItems: [
+      ...baseMobileNavItems.slice(0, -1),
+      adminItem,
+      baseMobileNavItems[baseMobileNavItems.length - 1],
+    ],
+  };
+}
 
 export function Sidebar({
   collapsed,
@@ -43,6 +65,8 @@ export function Sidebar({
   onToggle: () => void;
 }) {
   const pathname = usePathname();
+  const householdName = useAuthStore((s) => s.household?.name);
+  const { navItems } = useNavItems();
 
   return (
     <aside
@@ -58,14 +82,16 @@ export function Sidebar({
         {!collapsed && (
           <div className="min-w-0">
             <p className="font-heading font-semibold text-sm truncate">
-              Finanzas Y&L
+              {householdName || APP_NAME}
             </p>
-            <p className="text-xs text-muted-foreground truncate">Hogar</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {householdName ? APP_NAME : APP_SHORT}
+            </p>
           </div>
         )}
       </div>
 
-      <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {navItems.map((item) => {
           const active =
             item.href === "/"
@@ -79,7 +105,7 @@ export function Sidebar({
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                 active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
               )}
               title={item.label}
@@ -91,7 +117,7 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="p-2 border-t border-sidebar-border">
+      <div className="border-t border-sidebar-border p-2">
         <Button
           variant="ghost"
           size="sm"
@@ -114,10 +140,15 @@ export function Sidebar({
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { mobileNavItems } = useNavItems();
+  const cols = mobileNavItems.length;
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 pb-[env(safe-area-inset-bottom)]">
-      <ul className="grid grid-cols-5 h-14">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-backdrop-filter:bg-background/80 md:hidden">
+      <ul
+        className="grid h-14"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
         {mobileNavItems.map((item) => {
           const active =
             item.href === "/"
@@ -125,18 +156,19 @@ export function BottomNav() {
               : pathname.startsWith(item.href);
           const Icon = item.icon;
           return (
-            <li key={item.href}>
+            <li key={item.href} className="min-w-0">
               <Link
                 href={item.href}
+                aria-label={item.label}
                 className={cn(
-                  "flex h-full flex-col items-center justify-center gap-0.5 text-[10px]",
+                  "flex h-full flex-col items-center justify-center gap-0.5 px-0.5 text-[9px] leading-none sm:text-[10px]",
                   active
-                    ? "text-primary font-medium"
+                    ? "font-medium text-primary"
                     : "text-muted-foreground"
                 )}
               >
-                <Icon className="size-5" />
-                {item.label}
+                <Icon className="size-4 shrink-0 sm:size-[18px]" />
+                <span className="max-w-full truncate">{item.label}</span>
               </Link>
             </li>
           );

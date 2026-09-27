@@ -1,6 +1,8 @@
-export type UserId = "Yamil" | "Liz";
-export type ViewMode = "Yamil" | "Liz" | "Combined";
-export type Ownership = "Yamil" | "Liz" | "Shared";
+export type UserId = string;
+/** Vista: un miembro del hogar, o Combined (todo el hogar) */
+export type ViewMode = UserId | "Combined";
+/** Dueño del ítem: un miembro, o Shared (compartido del hogar) */
+export type Ownership = UserId | "Shared";
 export type Currency = "COP" | "USD";
 export type ExpenseStatus = "Pendiente" | "Pagado";
 export type RateType = "EA" | "MV";
@@ -20,13 +22,31 @@ export type ExpenseCategory =
   | "Vivienda"
   | "Suscripciones"
   | "Otro";
+/** Recibos públicos con consumo medible mes a mes */
+export type UtilityService = "agua" | "gas" | "energia";
 export type IncomeType = "Fijo" | "Variable";
 export type SettlementMode = "equal" | "income_share";
 
+/** Hijo u otro dependiente del hogar (sin cuenta; solo etiqueta de gastos) */
+export type Dependent = {
+  id: string;
+  name: string;
+  notes?: string;
+};
+
+export const UTILITY_SERVICES: UtilityService[] = ["agua", "gas", "energia"];
+
+export const UTILITY_META: Record<
+  UtilityService,
+  { label: string; unit: string; unitShort: string }
+> = {
+  agua: { label: "Agua", unit: "metros cúbicos", unitShort: "m³" },
+  gas: { label: "Gas", unit: "metros cúbicos", unitShort: "m³" },
+  energia: { label: "Energía", unit: "kilovatios-hora", unitShort: "kWh" },
+};
+
 /** 1–28 typical; 31 = último día del mes */
 export type DayOfMonth = number;
-
-export type PayWindowKind = "post_cop" | "post_usd";
 
 export interface User {
   id: UserId;
@@ -70,6 +90,12 @@ export interface Expense {
   periodKey?: string;
   /** Si el pago abonó una deuda */
   debtId?: string;
+  /** Recibo público: servicio y consumo del periodo */
+  utilityService?: UtilityService;
+  /** m³ (agua/gas) o kWh (energía) */
+  consumption?: number;
+  /** Dependiente/hijo al que se asocia el gasto (opcional) */
+  beneficiaryId?: string;
 }
 
 export interface Income {
@@ -89,11 +115,18 @@ export interface Saving {
   id: string;
   name: string;
   currentValue: number;
-  targetValue: number;
+  /** Si es 0 o undefined = cuenta abierta sin meta (solo saldo) */
+  targetValue?: number;
   monthlyContribution: number;
   currency: Currency;
   owner: Ownership;
   notes?: string;
+}
+
+export function hasSavingGoal(
+  saving: Pick<Saving, "targetValue">
+): boolean {
+  return (saving.targetValue ?? 0) > 0;
 }
 
 export interface RecurringExpenseTemplate {
@@ -106,6 +139,10 @@ export interface RecurringExpenseTemplate {
   owner: Ownership;
   dayOfMonth: DayOfMonth;
   active: boolean;
+  /** Si está definido, es un recibo público (pide consumo al pagar) */
+  utilityService?: UtilityService;
+  /** Dependiente/hijo asociado (se copia al materializar el mes) */
+  beneficiaryId?: string;
 }
 
 export interface RecurringIncomeTemplate {
@@ -120,18 +157,6 @@ export interface RecurringIncomeTemplate {
   notes?: string;
 }
 
-export interface PayWindow {
-  kind: PayWindowKind;
-  label: string;
-  /** YYYY-MM-DD */
-  start: string;
-  /** YYYY-MM-DD */
-  end: string;
-  /** Mes calendario de referencia para el sueldo ancla */
-  anchorMonth: string;
-  description: string;
-}
-
 export interface AmortizationRow {
   period: number;
   payment: number;
@@ -143,12 +168,14 @@ export interface AmortizationRow {
 export interface SettlementResult {
   mode: SettlementMode;
   totalShared: number;
-  yamilPaid: number;
-  lizPaid: number;
-  yamilShare: number;
-  lizShare: number;
-  yamilSharePct: number;
-  lizSharePct: number;
+  personA: UserId;
+  personB: UserId;
+  aPaid: number;
+  bPaid: number;
+  aShare: number;
+  bShare: number;
+  aSharePct: number;
+  bSharePct: number;
   debtor: UserId | null;
   creditor: UserId | null;
   amountOwed: number;

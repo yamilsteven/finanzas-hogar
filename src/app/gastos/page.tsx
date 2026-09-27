@@ -2,20 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { addMonths, format, parseISO } from "date-fns";
-import { Plus, Repeat, Scale } from "lucide-react";
+import { ClipboardList, Droplets, Plus, Repeat, Scale } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { MonthNavigator } from "@/components/shared/MonthNavigator";
 import { MonthlyReportButton } from "@/components/shared/MonthlyReportButton";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
+import { UtilityConsumptionPanel } from "@/components/shared/UtilityConsumptionPanel";
 import { formatMoney, toDisplayAmount } from "@/lib/currency";
 import {
   currentPeriodKey,
@@ -24,21 +27,26 @@ import {
 } from "@/lib/payCycle";
 import { calculateSettlement } from "@/lib/settlement";
 import { matchesViewMode } from "@/lib/summary";
+import { formatConsumption } from "@/lib/utility";
+import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import {
   canEdit,
   defaultOwnerForView,
   resolveMinPaymentMode,
+  UTILITY_META,
+  UTILITY_SERVICES,
   type Currency,
   type Expense,
   type ExpenseCategory,
   type Ownership,
   type RecurringExpenseTemplate,
   type UserId,
+  type UtilityService,
 } from "@/types";
 
-type PaymentKind = "libre" | "deuda" | "recurrente";
+type PaymentKind = "libre" | "deuda" | "recurrente" | "recibo";
 
 const categories: ExpenseCategory[] = [
   "Servicios",
@@ -54,13 +62,14 @@ const categories: ExpenseCategory[] = [
 
 const emptyForm = (
   viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
-  periodKey: string
+  periodKey: string,
+  defaultPaidBy: UserId
 ): Omit<Expense, "id"> => ({
   description: "",
   category: "Mercado",
   amount: 0,
   currency: "COP",
-  paidBy: viewMode === "Liz" ? "Liz" : "Yamil",
+  paidBy: viewMode === "Combined" ? defaultPaidBy : (viewMode as UserId),
   owner: defaultOwnerForView(viewMode),
   date: `${periodKey}-15`,
   status: "Pendiente",
@@ -69,17 +78,28 @@ const emptyForm = (
 });
 
 const emptyTemplate = (
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"]
+  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
+  defaultPaidBy: UserId
 ): Omit<RecurringExpenseTemplate, "id"> => ({
   description: "",
   category: "Servicios",
   amount: 0,
   currency: "COP",
-  paidBy: viewMode === "Liz" ? "Liz" : "Yamil",
+  paidBy: viewMode === "Combined" ? defaultPaidBy : (viewMode as UserId),
   owner: defaultOwnerForView(viewMode),
   dayOfMonth: 1,
   active: true,
+  utilityService: undefined,
 });
+
+function resolveUtilityService(
+  expense: Pick<Expense, "utilityService" | "templateId">,
+  templates: RecurringExpenseTemplate[]
+): UtilityService | undefined {
+  if (expense.utilityService) return expense.utilityService;
+  if (!expense.templateId) return undefined;
+  return templates.find((t) => t.id === expense.templateId)?.utilityService;
+}
 
 export default function GastosPage() {
   const viewMode = useSessionStore((s) => s.viewMode);
@@ -91,6 +111,7 @@ export default function GastosPage() {
   const incomes = useFinanceStore((s) => s.incomes);
   const debts = useFinanceStore((s) => s.debts);
   const expenseTemplates = useFinanceStore((s) => s.expenseTemplates);
+  const dependents = useFinanceStore((s) => s.dependents);
   const addExpense = useFinanceStore((s) => s.addExpense);
   const updateExpense = useFinanceStore((s) => s.updateExpense);
   const removeExpense = useFinanceStore((s) => s.removeExpense);
@@ -103,6 +124,11 @@ export default function GastosPage() {
     (s) => s.ensurePeriodsMaterialized
   );
 
+  const { people, isMultiPerson } = useHouseholdPeople();
+  const personA = people[0]?.id ?? "Yamil";
+  const personB = people[1]?.id ?? "Liz";
+  const defaultPaidBy = personA;
+
   const [periodKey, setPeriodKey] = useState(currentPeriodKey);
   const [paidByFilter, setPaidByFilter] = useState<"all" | UserId>("all");
   const [ownerFilter, setOwnerFilter] = useState<"all" | Ownership>("all");
@@ -112,16 +138,20 @@ export default function GastosPage() {
   const [categoryFilter, setCategoryFilter] = useState<"all" | ExpenseCategory>(
     "all"
   );
+  const [beneficiaryFilter, setBeneficiaryFilter] = useState<
+    "all" | "none" | string
+  >("all");
   const [open, setOpen] = useState(false);
+  const [mainTab, setMainTab] = useState("obligaciones");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(() => emptyForm(viewMode, periodKey));
+  const [form, setForm] = useState(() => emptyForm(viewMode, periodKey, defaultPaidBy));
   const [paymentKind, setPaymentKind] = useState<PaymentKind>("libre");
   const [selectedDebtId, setSelectedDebtId] = useState("");
   const [selectedRecurringId, setSelectedRecurringId] = useState("");
 
   const [tplOpen, setTplOpen] = useState(false);
   const [tplEditingId, setTplEditingId] = useState<string | null>(null);
-  const [tplForm, setTplForm] = useState(() => emptyTemplate(viewMode));
+  const [tplForm, setTplForm] = useState(() => emptyTemplate(viewMode, defaultPaidBy));
   const [deleteTarget, setDeleteTarget] = useState<
     | { kind: "expense"; item: Expense }
     | { kind: "template"; item: RecurringExpenseTemplate }
@@ -152,15 +182,33 @@ export default function GastosPage() {
         .filter((e) =>
           categoryFilter === "all" ? true : e.category === categoryFilter
         )
+        .filter((e) => {
+          if (beneficiaryFilter === "all") return true;
+          if (beneficiaryFilter === "none") return !e.beneficiaryId;
+          return e.beneficiaryId === beneficiaryFilter;
+        })
         .sort((a, b) => b.date.localeCompare(a.date)),
-    [monthBase, paidByFilter, ownerFilter, statusFilter, categoryFilter]
+    [
+      monthBase,
+      paidByFilter,
+      ownerFilter,
+      statusFilter,
+      categoryFilter,
+      beneficiaryFilter,
+    ]
   );
 
   const hasActiveFilters =
     paidByFilter !== "all" ||
     ownerFilter !== "all" ||
     statusFilter !== "all" ||
-    categoryFilter !== "all";
+    categoryFilter !== "all" ||
+    beneficiaryFilter !== "all";
+
+  const dependentName = (id?: string) => {
+    if (!id) return null;
+    return dependents.find((d) => d.id === id)?.name ?? "—";
+  };
 
   const monthTotals = useMemo(() => {
     const sum = (list: Expense[]) =>
@@ -172,8 +220,11 @@ export default function GastosPage() {
 
     const paid = sum(visible.filter((e) => e.status === "Pagado"));
     const pending = sum(visible.filter((e) => e.status === "Pendiente"));
-    const byYamil = sum(visible.filter((e) => e.paidBy === "Yamil"));
-    const byLiz = sum(visible.filter((e) => e.paidBy === "Liz"));
+    const byPerson = people.map((p) => ({
+      id: p.id,
+      name: p.name,
+      total: sum(visible.filter((e) => e.paidBy === p.id)),
+    }));
     const shared = sum(visible.filter((e) => e.owner === "Shared"));
     const monthAll = sum(monthBase);
 
@@ -181,19 +232,19 @@ export default function GastosPage() {
       paid,
       pending,
       total: paid + pending,
-      byYamil,
-      byLiz,
+      byPerson,
       shared,
       monthAll,
       count: visible.length,
     };
-  }, [visible, monthBase, displayCurrency, trm]);
+  }, [visible, monthBase, displayCurrency, trm, people]);
 
   const clearFilters = () => {
     setPaidByFilter("all");
     setOwnerFilter("all");
     setStatusFilter("all");
     setCategoryFilter("all");
+    setBeneficiaryFilter("all");
   };
 
   const monthExpensesForSettlement = useMemo(
@@ -208,9 +259,19 @@ export default function GastosPage() {
         filterByPeriodKey(incomes, periodKey),
         "equal",
         displayCurrency,
-        trm
+        trm,
+        personA,
+        personB
       ),
-    [monthExpensesForSettlement, incomes, periodKey, displayCurrency, trm]
+    [
+      monthExpensesForSettlement,
+      incomes,
+      periodKey,
+      displayCurrency,
+      trm,
+      personA,
+      personB,
+    ]
   );
 
   const visibleDebts = useMemo(
@@ -223,11 +284,92 @@ export default function GastosPage() {
 
   const pendingRecurring = useMemo(
     () =>
+      monthBase.filter((e) => {
+        if (e.status !== "Pendiente") return false;
+        if (!(e.recurring || Boolean(e.templateId))) return false;
+        return !resolveUtilityService(e, expenseTemplates);
+      }),
+    [monthBase, expenseTemplates]
+  );
+
+  /** Todas las obligaciones recurrentes del mes (pagadas y pendientes) */
+  const monthObligations = useMemo(() => {
+    return monthBase
+      .filter((e) => e.recurring || Boolean(e.templateId))
+      .sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === "Pendiente" ? -1 : 1;
+        }
+        return a.description.localeCompare(b.description);
+      });
+  }, [monthBase]);
+
+  const obligationStats = useMemo(() => {
+    const pending = monthObligations.filter((e) => e.status === "Pendiente");
+    const paid = monthObligations.filter((e) => e.status === "Pagado");
+    return { pending: pending.length, paid: paid.length, total: monthObligations.length };
+  }, [monthObligations]);
+
+  const pendingUtilities = useMemo(
+    () =>
       monthBase.filter(
         (e) =>
-          e.status === "Pendiente" && (e.recurring || Boolean(e.templateId))
+          e.status === "Pendiente" &&
+          Boolean(resolveUtilityService(e, expenseTemplates))
       ),
-    [monthBase]
+    [monthBase, expenseTemplates]
+  );
+
+  /** Plantillas de recibo activas (fuente del dropdown, no lista hardcodeada) */
+  const utilityTemplates = useMemo(
+    () =>
+      expenseTemplates.filter(
+        (t) =>
+          t.active &&
+          Boolean(t.utilityService) &&
+          matchesViewMode(t, viewMode)
+      ),
+    [expenseTemplates, viewMode]
+  );
+
+  /** Opciones unificadas: pendientes del mes + plantillas sin pendiente aún */
+  const utilityMonthOptions = useMemo(() => {
+    const pendingTemplateIds = new Set(
+      pendingUtilities.map((e) => e.templateId).filter(Boolean) as string[]
+    );
+    const pending = pendingUtilities.map((e) => ({
+      key: `pending:${e.id}`,
+      kind: "pending" as const,
+      id: e.id,
+      label: e.description,
+      utilityService: resolveUtilityService(e, expenseTemplates),
+    }));
+    const fromTemplates = utilityTemplates
+      .filter((t) => !pendingTemplateIds.has(t.id))
+      .map((t) => ({
+        key: `template:${t.id}`,
+        kind: "template" as const,
+        id: t.id,
+        label: t.description,
+        utilityService: t.utilityService,
+      }));
+    return [...pending, ...fromTemplates];
+  }, [pendingUtilities, utilityTemplates, expenseTemplates]);
+
+  const selectedUtilityOptionKey = useMemo(() => {
+    if (selectedRecurringId) return `pending:${selectedRecurringId}`;
+    if (form.templateId) return `template:${form.templateId}`;
+    return "";
+  }, [selectedRecurringId, form.templateId]);
+
+  const showConsumptionField = Boolean(
+    form.utilityService ||
+      paymentKind === "recibo" ||
+      (editingId &&
+        resolveUtilityService(
+          { utilityService: form.utilityService, templateId: form.templateId },
+          expenseTemplates
+        ))
   );
 
   const openCreate = () => {
@@ -236,7 +378,7 @@ export default function GastosPage() {
     setSelectedDebtId("");
     setSelectedRecurringId("");
     setForm({
-      ...emptyForm(viewMode, periodKey),
+      ...emptyForm(viewMode, periodKey, defaultPaidBy),
       date: new Date().toISOString().slice(0, 10),
       status: "Pagado",
     });
@@ -259,6 +401,9 @@ export default function GastosPage() {
       debtId: debt.id,
       recurring: false,
       templateId: undefined,
+      utilityService: undefined,
+      consumption: undefined,
+      beneficiaryId: undefined,
     }));
   };
 
@@ -266,10 +411,12 @@ export default function GastosPage() {
     setSelectedRecurringId(expenseId);
     const exp = expenses.find((e) => e.id === expenseId);
     if (!exp) return;
+    const utilityService = resolveUtilityService(exp, expenseTemplates);
     setForm({
       description: exp.description,
       category: exp.category,
-      amount: exp.amount,
+      // Monto real lo escribe el usuario (no el de la plantilla)
+      amount: 0,
       currency: exp.currency,
       paidBy: exp.paidBy,
       owner: exp.owner,
@@ -279,7 +426,98 @@ export default function GastosPage() {
       templateId: exp.templateId,
       periodKey: exp.periodKey ?? periodKeyFromDate(exp.date),
       debtId: undefined,
+      utilityService,
+      consumption: undefined,
+      beneficiaryId: exp.beneficiaryId,
     });
+  };
+
+  const applyUtilityPending = (expenseId: string) => {
+    setSelectedRecurringId(expenseId);
+    const exp = expenses.find((e) => e.id === expenseId);
+    if (!exp) return;
+    const utilityService = resolveUtilityService(exp, expenseTemplates);
+    setForm({
+      description: exp.description,
+      category: "Servicios",
+      amount: 0,
+      currency: exp.currency,
+      paidBy: exp.paidBy,
+      owner: exp.owner,
+      date: exp.date,
+      status: "Pagado",
+      recurring: Boolean(exp.templateId) || Boolean(exp.recurring),
+      templateId: exp.templateId,
+      periodKey: exp.periodKey ?? periodKeyFromDate(exp.date),
+      debtId: undefined,
+      utilityService,
+      consumption: undefined,
+      beneficiaryId: exp.beneficiaryId,
+    });
+  };
+
+  const applyUtilityTemplate = (templateId: string) => {
+    const tpl = expenseTemplates.find((t) => t.id === templateId);
+    if (!tpl?.utilityService) return;
+    setSelectedRecurringId("");
+    setForm((f) => ({
+      ...f,
+      description: tpl.description,
+      category: "Servicios",
+      amount: 0,
+      currency: tpl.currency,
+      paidBy: tpl.paidBy,
+      owner: tpl.owner,
+      utilityService: tpl.utilityService,
+      templateId: tpl.id,
+      recurring: true,
+      debtId: undefined,
+      status: "Pagado",
+      consumption: undefined,
+      beneficiaryId: tpl.beneficiaryId,
+      date: f.date || new Date().toISOString().slice(0, 10),
+      periodKey: periodKeyFromDate(
+        f.date || new Date().toISOString().slice(0, 10)
+      ),
+    }));
+  };
+
+  const applyUtilityMonthOption = (key: string) => {
+    if (!key) {
+      setSelectedRecurringId("");
+      setForm((f) => ({
+        ...f,
+        utilityService: undefined,
+        consumption: undefined,
+        templateId: undefined,
+        description: "",
+        amount: 0,
+      }));
+      return;
+    }
+    if (key.startsWith("pending:")) {
+      applyUtilityPending(key.slice("pending:".length));
+      return;
+    }
+    if (key.startsWith("template:")) {
+      applyUtilityTemplate(key.slice("template:".length));
+    }
+  };
+
+  const openPayObligation = (expense: Expense) => {
+    if (expense.status === "Pagado") {
+      openEdit(expense);
+      return;
+    }
+    const isUtility = Boolean(
+      resolveUtilityService(expense, expenseTemplates)
+    );
+    setEditingId(null);
+    setPaymentKind(isUtility ? "recibo" : "recurrente");
+    setSelectedDebtId("");
+    if (isUtility) applyUtilityPending(expense.id);
+    else applyRecurringSelection(expense.id);
+    setOpen(true);
   };
 
   const openEdit = (expense: Expense) => {
@@ -287,11 +525,16 @@ export default function GastosPage() {
       toast.error("No puedes editar este gasto en la vista actual");
       return;
     }
+    const utilityService = resolveUtilityService(expense, expenseTemplates);
     setEditingId(expense.id);
     setPaymentKind(
-      expense.debtId ? "deuda" : expense.templateId || expense.recurring
-        ? "recurrente"
-        : "libre"
+      expense.debtId
+        ? "deuda"
+        : utilityService
+          ? "recibo"
+          : expense.templateId || expense.recurring
+            ? "recurrente"
+            : "libre"
     );
     setSelectedDebtId(expense.debtId ?? "");
     setSelectedRecurringId(expense.id);
@@ -308,6 +551,9 @@ export default function GastosPage() {
       templateId: expense.templateId,
       periodKey: expense.periodKey ?? periodKeyFromDate(expense.date),
       debtId: expense.debtId,
+      utilityService,
+      consumption: expense.consumption,
+      beneficiaryId: expense.beneficiaryId,
     });
     setOpen(true);
   };
@@ -318,18 +564,50 @@ export default function GastosPage() {
       return;
     }
 
-    // Pago de recurrente existente: marcar Pagado (+ ajustar monto si cambió)
+    const utilityService =
+      form.utilityService ||
+      (paymentKind === "recibo" ? form.utilityService : undefined);
+
+    if (
+      (paymentKind === "recibo" || utilityService) &&
+      form.status === "Pagado" &&
+      (form.consumption == null || !(form.consumption > 0))
+    ) {
+      toast.error(
+        utilityService
+          ? `Ingresa el consumo en ${UTILITY_META[utilityService].unitShort}`
+          : "Ingresa el consumo del recibo"
+      );
+      return;
+    }
+
+    if (paymentKind === "recibo" && !utilityService && !editingId) {
+      toast.error("Selecciona un recibo / servicio del mes");
+      return;
+    }
+
+    // Pago de recurrente / recibo pendiente: marcar Pagado
     if (
       !editingId &&
-      paymentKind === "recurrente" &&
+      (paymentKind === "recurrente" || paymentKind === "recibo") &&
       selectedRecurringId
     ) {
       updateExpense(selectedRecurringId, {
         ...form,
+        utilityService:
+          utilityService ??
+          resolveUtilityService(
+            expenses.find((e) => e.id === selectedRecurringId) ?? form,
+            expenseTemplates
+          ),
         status: "Pagado",
         periodKey: periodKeyFromDate(form.date),
       });
-      toast.success("Recurrente marcado como pagado");
+      toast.success(
+        paymentKind === "recibo"
+          ? "Recibo pagado y consumo registrado"
+          : "Recurrente marcado como pagado"
+      );
       setOpen(false);
       return;
     }
@@ -339,6 +617,17 @@ export default function GastosPage() {
       periodKey: periodKeyFromDate(form.date),
       debtId: paymentKind === "deuda" ? selectedDebtId || form.debtId : form.debtId,
       recurring: paymentKind === "recurrente" ? true : form.recurring,
+      category: paymentKind === "recibo" ? "Servicios" : form.category,
+      utilityService:
+        paymentKind === "recibo" || utilityService
+          ? utilityService ?? form.utilityService
+          : form.utilityService,
+      consumption:
+        paymentKind === "recibo" || utilityService
+          ? form.consumption
+          : form.utilityService
+            ? form.consumption
+            : undefined,
     };
 
     if (editingId) {
@@ -375,6 +664,8 @@ export default function GastosPage() {
         status: "Pagado",
         debtId: debt.id,
         category: "Vivienda",
+        utilityService: undefined,
+        consumption: undefined,
       });
       toast.success(
         newBalance === 0
@@ -386,7 +677,9 @@ export default function GastosPage() {
     }
 
     addExpense(payload);
-    toast.success("Pago registrado");
+    toast.success(
+      paymentKind === "recibo" ? "Recibo y consumo registrados" : "Pago registrado"
+    );
     setOpen(false);
   };
 
@@ -411,7 +704,7 @@ export default function GastosPage() {
         <div>
           <h2 className="font-heading text-xl font-semibold">Gastos / Pagos</h2>
           <p className="text-sm text-muted-foreground">
-            Gastos libres, cuotas de deuda y recurrentes del mes
+            Libres, deudas, recurrentes y recibos públicos con consumo
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -444,18 +737,15 @@ export default function GastosPage() {
             compact: true,
           })}
         />
-        <MiniStat
-          label="Pagó Yamil"
-          value={formatMoney(monthTotals.byYamil, displayCurrency, {
-            compact: true,
-          })}
-        />
-        <MiniStat
-          label="Pagó Liz"
-          value={formatMoney(monthTotals.byLiz, displayCurrency, {
-            compact: true,
-          })}
-        />
+        {monthTotals.byPerson.map((p) => (
+          <MiniStat
+            key={p.id}
+            label={`Pagó ${p.name}`}
+            value={formatMoney(p.total, displayCurrency, {
+              compact: true,
+            })}
+          />
+        ))}
         <MiniStat
           label="Total mes"
           value={formatMoney(monthTotals.monthAll, displayCurrency, {
@@ -475,8 +765,11 @@ export default function GastosPage() {
               }
             >
               <option value="all">Todos</option>
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </NativeSelect>
           </Field>
           <Field label="Owner" className="min-w-[110px] flex-1">
@@ -487,8 +780,11 @@ export default function GastosPage() {
               }
             >
               <option value="all">Todos</option>
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
               <option value="Shared">Shared</option>
             </NativeSelect>
           </Field>
@@ -521,6 +817,20 @@ export default function GastosPage() {
               ))}
             </NativeSelect>
           </Field>
+          <Field label="Beneficiario" className="min-w-[130px] flex-1">
+            <NativeSelect
+              value={beneficiaryFilter}
+              onChange={(e) => setBeneficiaryFilter(e.target.value)}
+            >
+              <option value="all">Todos</option>
+              <option value="none">Sin asignar</option>
+              {dependents.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters}>
               Limpiar
@@ -529,9 +839,17 @@ export default function GastosPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="mes">
+      <Tabs value={mainTab} onValueChange={setMainTab}>
         <TabsList>
+          <TabsTrigger value="obligaciones">
+            <ClipboardList className="size-3.5" />
+            Obligaciones
+          </TabsTrigger>
           <TabsTrigger value="mes">Mes</TabsTrigger>
+          <TabsTrigger value="recibos">
+            <Droplets className="size-3.5" />
+            Recibos
+          </TabsTrigger>
           <TabsTrigger value="cierre">
             <Scale className="size-3.5" />
             Cierre
@@ -542,15 +860,106 @@ export default function GastosPage() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="obligaciones" className="mt-4 space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h3 className="text-base font-medium">Obligaciones del mes</h3>
+              <p className="text-xs text-muted-foreground">
+                Recurrentes y recibos: qué falta pagar y qué ya está pago.
+                El monto lo escribes al pagar (no usa el valor de la plantilla).
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {obligationStats.pending} pendientes · {obligationStats.paid}{" "}
+              pagadas
+            </p>
+          </div>
+
+          {monthObligations.length === 0 ? (
+            <EmptyState
+              title="Sin obligaciones este mes"
+              description="Crea plantillas recurrentes (Administración, internet, recibos…) y aparecerán aquí como pendientes para pagar."
+              action={{
+                label: "Crear plantilla",
+                onClick: () => setMainTab("plantillas"),
+              }}
+            />
+          ) : (
+            monthObligations.map((e) => {
+              const isUtility = Boolean(
+                resolveUtilityService(e, expenseTemplates)
+              );
+              const pending = e.status === "Pendiente";
+              return (
+                <Card key={e.id} size="sm">
+                  <CardContent className="flex flex-wrap items-center gap-3 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium truncate">{e.description}</p>
+                        <Badge
+                          variant={pending ? "outline" : "secondary"}
+                          className={
+                            pending
+                              ? "border-amber-500/40 text-amber-800"
+                              : "bg-teal-100 text-teal-800"
+                          }
+                        >
+                          {pending ? "Se debe" : "Pagado"}
+                        </Badge>
+                        {isUtility && (
+                          <span className="text-[10px] uppercase text-sky-700">
+                            Recibo
+                          </span>
+                        )}
+                        {e.beneficiaryId && (
+                          <span className="text-[10px] uppercase text-violet-700">
+                            {dependentName(e.beneficiaryId)}
+                          </span>
+                        )}
+                        <OwnerBadge owner={e.owner} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {e.category} · vence {e.date}
+                        {!pending
+                          ? ` · pagó ${e.paidBy} · ${formatMoney(e.amount, e.currency)}`
+                          : ""}
+                        {e.utilityService && e.consumption != null
+                          ? ` · ${formatConsumption(e.utilityService, e.consumption)}`
+                          : ""}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={pending ? "default" : "outline"}
+                      onClick={() => openPayObligation(e)}
+                    >
+                      {pending ? "Pagar" : "Ver / editar"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
         <TabsContent value="mes" className="mt-4 space-y-2">
           {visible.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                {monthBase.length === 0
-                  ? "No hay gastos en este mes. Genera recurrentes desde Plantillas o añade uno manual."
-                  : "Ningún gasto coincide con los filtros. Prueba Limpiar."}
-              </CardContent>
-            </Card>
+            monthBase.length === 0 ? (
+              <EmptyState
+                title="Sin gastos este mes"
+                description="Genera obligaciones desde Plantillas o registra un pago manual."
+                action={{
+                  label: "Ir a Obligaciones",
+                  onClick: () => setMainTab("obligaciones"),
+                }}
+              />
+            ) : (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  Ningún gasto coincide con los filtros. Prueba Limpiar.
+                </CardContent>
+              </Card>
+            )
           ) : (
             visible.map((e) => (
               <Card key={e.id} size="sm">
@@ -569,9 +978,22 @@ export default function GastosPage() {
                           Deuda
                         </span>
                       )}
+                      {resolveUtilityService(e, expenseTemplates) && (
+                        <span className="text-[10px] uppercase text-sky-700 dark:text-sky-300">
+                          Recibo
+                        </span>
+                      )}
+                      {e.beneficiaryId && (
+                        <span className="text-[10px] uppercase text-violet-700">
+                          {dependentName(e.beneficiaryId)}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {e.category} · {e.date} · Pagó {e.paidBy}
+                      {e.utilityService && e.consumption != null
+                        ? ` · ${formatConsumption(e.utilityService, e.consumption)}`
+                        : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -623,28 +1045,47 @@ export default function GastosPage() {
           )}
         </TabsContent>
 
+        <TabsContent value="recibos" className="mt-4">
+          <UtilityConsumptionPanel
+            expenses={expenses.filter((e) => matchesViewMode(e, viewMode))}
+            periodKey={periodKey}
+            displayCurrency={displayCurrency}
+          />
+        </TabsContent>
+
         <TabsContent value="cierre" className="mt-4 space-y-4">
           <div>
             <h3 className="text-base font-medium">Cierre Shared · mes seleccionado</h3>
             <p className="text-xs text-muted-foreground">
-              Cuánto aportó cada uno en gastos compartidos pagados
+              {isMultiPerson
+                ? "Cuánto aportó cada uno en gastos compartidos pagados"
+                : "El cierre entre personas aplica cuando el hogar tiene 2 o más miembros"}
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <MiniStat
-              label="Total compartido"
-              value={formatMoney(settlement.totalShared, displayCurrency)}
-            />
-            <MiniStat
-              label="Pagó Yamil"
-              value={formatMoney(settlement.yamilPaid, displayCurrency)}
-            />
-            <MiniStat
-              label="Pagó Liz"
-              value={formatMoney(settlement.lizPaid, displayCurrency)}
-            />
-          </div>
+          {isMultiPerson ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <MiniStat
+                label="Total compartido"
+                value={formatMoney(settlement.totalShared, displayCurrency)}
+              />
+              <MiniStat
+                label={`Pagó ${settlement.personA}`}
+                value={formatMoney(settlement.aPaid, displayCurrency)}
+              />
+              <MiniStat
+                label={`Pagó ${settlement.personB}`}
+                value={formatMoney(settlement.bPaid, displayCurrency)}
+              />
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-6 text-sm text-muted-foreground">
+                Hogar de una persona: no hay ajuste entre miembros. Los gastos
+                Shared se tratan como tuyos.
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="plantillas" className="mt-4 space-y-3">
@@ -653,7 +1094,7 @@ export default function GastosPage() {
               size="sm"
               onClick={() => {
                 setTplEditingId(null);
-                setTplForm(emptyTemplate(viewMode));
+                setTplForm(emptyTemplate(viewMode, defaultPaidBy));
                 setTplOpen(true);
               }}
             >
@@ -661,7 +1102,21 @@ export default function GastosPage() {
               Nueva plantilla
             </Button>
           </div>
-          {expenseTemplates.map((t) => (
+          {expenseTemplates.length === 0 ? (
+            <EmptyState
+              title="Sin plantillas aún"
+              description="Las plantillas crean cada mes las obligaciones (admin, internet, recibos…). Empieza con 2 o 3."
+              action={{
+                label: "Crear primera plantilla",
+                onClick: () => {
+                  setTplEditingId(null);
+                  setTplForm(emptyTemplate(viewMode, defaultPaidBy));
+                  setTplOpen(true);
+                },
+              }}
+            />
+          ) : (
+            expenseTemplates.map((t) => (
             <Card key={t.id} size="sm">
               <CardContent className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
@@ -671,6 +1126,16 @@ export default function GastosPage() {
                     {!t.active && (
                       <span className="text-xs text-muted-foreground">
                         Pausada
+                      </span>
+                    )}
+                    {t.utilityService && (
+                      <span className="text-[10px] uppercase text-sky-700 dark:text-sky-300">
+                        Recibo · {UTILITY_META[t.utilityService].unitShort}
+                      </span>
+                    )}
+                    {t.beneficiaryId && (
+                      <span className="text-[10px] uppercase text-violet-700">
+                        {dependentName(t.beneficiaryId)}
                       </span>
                     )}
                   </div>
@@ -700,6 +1165,8 @@ export default function GastosPage() {
                       owner: t.owner,
                       dayOfMonth: t.dayOfMonth,
                       active: t.active,
+                      utilityService: t.utilityService,
+                      beneficiaryId: t.beneficiaryId,
                     });
                     setTplOpen(true);
                   }}
@@ -718,7 +1185,8 @@ export default function GastosPage() {
                 </Button>
               </CardContent>
             </Card>
-          ))}
+            ))
+          )}
           <p className="text-xs text-muted-foreground">
             Al abrir un mes, las plantillas activas generan gastos Pendiente
             automáticamente (sin duplicar).
@@ -730,7 +1198,7 @@ export default function GastosPage() {
         open={open}
         onOpenChange={setOpen}
         title={editingId ? "Editar pago" : "Nuevo pago"}
-        description="Gasto libre, cuota de deuda o recurrente pendiente"
+        description="Gasto libre, deuda, obligación del mes o recibo"
         footer={
           <>
             <Button variant="outline" onClick={() => setOpen(false)}>
@@ -740,8 +1208,10 @@ export default function GastosPage() {
               {paymentKind === "deuda" && !editingId
                 ? "Pagar y bajar saldo"
                 : paymentKind === "recurrente" && !editingId
-                  ? "Marcar pagado"
-                  : "Guardar"}
+                  ? "Registrar pago"
+                  : paymentKind === "recibo" && !editingId
+                    ? "Pagar recibo"
+                    : "Guardar"}
             </Button>
           </>
         }
@@ -756,15 +1226,20 @@ export default function GastosPage() {
                 setSelectedDebtId("");
                 setSelectedRecurringId("");
                 setForm({
-                  ...emptyForm(viewMode, periodKey),
+                  ...emptyForm(viewMode, periodKey, defaultPaidBy),
                   date: new Date().toISOString().slice(0, 10),
                   status: "Pagado",
+                  amount: 0,
+                  ...(kind === "recibo"
+                    ? { category: "Servicios" as ExpenseCategory }
+                    : {}),
                 });
               }}
             >
               <option value="libre">Gasto libre</option>
               <option value="deuda">Pago de deuda</option>
-              <option value="recurrente">Pago recurrente</option>
+              <option value="recurrente">Obligación del mes</option>
+              <option value="recibo">Recibo público</option>
             </NativeSelect>
           </Field>
         )}
@@ -789,20 +1264,51 @@ export default function GastosPage() {
         )}
 
         {paymentKind === "recurrente" && !editingId && (
-          <Field label="Recurrente pendiente del mes">
+          <Field label="Obligación pendiente">
             <NativeSelect
               value={selectedRecurringId}
               onChange={(e) => applyRecurringSelection(e.target.value)}
             >
-              <option value="">Selecciona un recurrente…</option>
+              <option value="">Selecciona…</option>
               {pendingRecurring.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.description} · {formatMoney(e.amount, e.currency)} ·{" "}
-                  {e.date}
+                  {e.description}
                 </option>
               ))}
             </NativeSelect>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Lista de lo que aún se debe este mes (ej. Administración). El
+              monto lo pones tú según el valor real.
+            </p>
           </Field>
+        )}
+
+        {paymentKind === "recibo" && !editingId && (
+          <>
+            <Field label="Servicio del mes">
+              <NativeSelect
+                value={selectedUtilityOptionKey}
+                onChange={(e) => applyUtilityMonthOption(e.target.value)}
+              >
+                <option value="">Selecciona un recibo…</option>
+                {utilityMonthOptions.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </NativeSelect>
+              {utilityMonthOptions.length === 0 ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  No hay plantillas de recibo. Crea una en Plantillas y
+                  márcala como recibo público.
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  El monto lo ajustas abajo según el recibo real de este mes.
+                </p>
+              )}
+            </Field>
+          </>
         )}
 
         {paymentKind === "deuda" && selectedDebtId && (() => {
@@ -848,6 +1354,7 @@ export default function GastosPage() {
                   category: e.target.value as ExpenseCategory,
                 }))
               }
+              disabled={paymentKind === "recibo"}
             >
               {categories.map((c) => (
                 <option key={c} value={c}>
@@ -869,6 +1376,11 @@ export default function GastosPage() {
             <Input
               type="number"
               min={0}
+              placeholder={
+                paymentKind === "recurrente" || paymentKind === "recibo"
+                  ? "Valor real de este mes"
+                  : undefined
+              }
               value={form.amount || ""}
               onChange={(e) =>
                 setForm((f) => ({
@@ -893,6 +1405,58 @@ export default function GastosPage() {
             </NativeSelect>
           </Field>
         </div>
+        {showConsumptionField && form.utilityService && (
+          <Field
+            label={`Consumo del mes (${UTILITY_META[form.utilityService].unitShort})`}
+          >
+            <Input
+              type="number"
+              min={0}
+              step="0.1"
+              placeholder={
+                form.utilityService === "energia"
+                  ? "Ej. 245"
+                  : "Ej. 16.5"
+              }
+              value={form.consumption ?? ""}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  consumption:
+                    e.target.value === ""
+                      ? undefined
+                      : Number(e.target.value),
+                }))
+              }
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {UTILITY_META[form.utilityService].unit} según el recibo. Sirve
+              para comparar mes a mes en la pestaña Recibos.
+            </p>
+          </Field>
+        )}
+        {editingId && !form.utilityService && paymentKind === "recibo" && (
+          <Field label="Plantilla de recibo">
+            <NativeSelect
+              value={form.templateId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                applyUtilityTemplate(id);
+              }}
+            >
+              <option value="">Selecciona…</option>
+              {utilityTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.description}
+                  {t.utilityService
+                    ? ` · ${UTILITY_META[t.utilityService].unitShort}`
+                    : ""}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+        )}
         {paymentKind === "deuda" &&
           selectedDebtId &&
           (() => {
@@ -924,8 +1488,11 @@ export default function GastosPage() {
                 }))
               }
             >
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </NativeSelect>
           </Field>
           <Field label="Owner">
@@ -938,12 +1505,39 @@ export default function GastosPage() {
                 }))
               }
             >
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
               <option value="Shared">Shared</option>
             </NativeSelect>
           </Field>
         </div>
+        <Field label="Beneficiario (opcional)">
+          <NativeSelect
+            value={form.beneficiaryId ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                beneficiaryId: e.target.value || undefined,
+              }))
+            }
+          >
+            <option value="">Ninguno</option>
+            {dependents.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </NativeSelect>
+          {dependents.length === 0 && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Agrega hijos en Perfil → Dependientes para etiquetar gastos (ej.
+              colegio).
+            </p>
+          )}
+        </Field>
         <Field label="Estado">
           <NativeSelect
             value={form.status}
@@ -1014,6 +1608,33 @@ export default function GastosPage() {
             />
           </Field>
         </div>
+        <Field label="Recibo público (opcional)">
+          <NativeSelect
+            value={tplForm.utilityService ?? ""}
+            onChange={(e) => {
+              const v = e.target.value as UtilityService | "";
+              setTplForm((f) => ({
+                ...f,
+                utilityService: v || undefined,
+                category: v ? "Servicios" : f.category,
+                description:
+                  v && !f.description.trim()
+                    ? `Recibo ${UTILITY_META[v].label.toLowerCase()}`
+                    : f.description,
+              }));
+            }}
+          >
+            <option value="">No — gasto normal</option>
+            {UTILITY_SERVICES.map((s) => (
+              <option key={s} value={s}>
+                {UTILITY_META[s].label} ({UTILITY_META[s].unitShort})
+              </option>
+            ))}
+          </NativeSelect>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Si es recibo, al pagar pedirá el consumo del mes para la gráfica.
+          </p>
+        </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Monto">
             <Input
@@ -1054,8 +1675,11 @@ export default function GastosPage() {
                 }))
               }
             >
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </NativeSelect>
           </Field>
           <Field label="Owner">
@@ -1068,12 +1692,33 @@ export default function GastosPage() {
                 }))
               }
             >
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
               <option value="Shared">Shared</option>
             </NativeSelect>
           </Field>
         </div>
+        <Field label="Beneficiario (opcional)">
+          <NativeSelect
+            value={tplForm.beneficiaryId ?? ""}
+            onChange={(e) =>
+              setTplForm((f) => ({
+                ...f,
+                beneficiaryId: e.target.value || undefined,
+              }))
+            }
+          >
+            <option value="">Ninguno</option>
+            {dependents.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
       </ResponsiveForm>
 
       <ConfirmDeleteDialog

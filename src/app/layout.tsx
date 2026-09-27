@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { TrmBootstrap } from "@/components/providers/TrmBootstrap";
 import { AppShell } from "@/components/layout/AppShell";
+import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -17,9 +17,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finanzas Y&L — Hogar",
-  description:
-    "Gestión financiera del hogar para Yamil y Liz. Multimoneda COP/USD.",
+  title: APP_NAME,
+  description: APP_TAGLINE,
 };
 
 export default function RootLayout({
@@ -28,16 +27,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning className="h-full">
+    <html lang="es" className="light h-full" style={{ colorScheme: "light" }}>
       <body
-        className={`${dmSans.variable} ${jetbrainsMono.variable} min-h-full font-sans antialiased`}
+        className={`${dmSans.variable} ${jetbrainsMono.variable} min-h-full bg-background font-sans text-foreground antialiased`}
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <TrmBootstrap>
-            <AppShell>{children}</AppShell>
-            <Toaster richColors position="top-center" />
-          </TrmBootstrap>
-        </ThemeProvider>
+        <TrmBootstrap>
+          <AppShell>{children}</AppShell>
+          <Toaster richColors position="top-center" />
+        </TrmBootstrap>
       </body>
     </html>
   );

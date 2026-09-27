@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
@@ -50,14 +51,15 @@ const debtTypes: DebtType[] = [
 ];
 
 function emptyDebt(
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"]
+  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
+  displayCurrency: Currency = "COP"
 ): Omit<Debt, "id"> {
   return {
     name: "",
     entity: "",
     type: "Tarjeta",
     balance: 0,
-    currency: viewMode === "Yamil" ? "USD" : "COP",
+    currency: displayCurrency,
     annualRate: 12,
     rateType: "EA",
     minPayment: 0,
@@ -81,7 +83,7 @@ export default function DeudasPage() {
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(() => emptyDebt(viewMode));
+  const [form, setForm] = useState(() => emptyDebt(viewMode, displayCurrency));
 
   const [amortOpen, setAmortOpen] = useState(false);
   const [amortDebt, setAmortDebt] = useState<Debt | null>(null);
@@ -108,7 +110,7 @@ export default function DeudasPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyDebt(viewMode));
+    setForm(emptyDebt(viewMode, displayCurrency));
     setOpen(true);
   };
 
@@ -327,7 +329,15 @@ export default function DeudasPage() {
       </Card>
 
       <div className="grid gap-3 md:grid-cols-2">
-        {visible.map((d) => (
+        {visible.length === 0 ? (
+          <EmptyState
+            className="md:col-span-2"
+            title="Sin deudas registradas"
+            description="Cuando agregues tarjetas, créditos o hipoteca, aquí verás saldos, cuotas y vencimientos."
+            action={{ label: "Agregar deuda", onClick: openCreate }}
+          />
+        ) : (
+          visible.map((d) => (
           <Card key={d.id}>
             <CardHeader className="flex-row items-start justify-between gap-2">
               <div>
@@ -396,7 +406,8 @@ export default function DeudasPage() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        ))
+        )}
       </div>
 
       <ResponsiveForm

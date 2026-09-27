@@ -8,38 +8,43 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
-import { formatMoney } from "@/lib/currency";
+import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
 import { matchesViewMode } from "@/lib/summary";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import {
   canEdit,
   defaultOwnerForView,
+  hasSavingGoal,
   type Currency,
   type Ownership,
   type Saving,
 } from "@/types";
 
 function emptySaving(
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"]
+  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
+  displayCurrency: Currency = "COP"
 ): Omit<Saving, "id"> {
   return {
     name: "",
     currentValue: 0,
     targetValue: 0,
     monthlyContribution: 0,
-    currency: "COP",
+    currency: displayCurrency,
     owner: defaultOwnerForView(viewMode),
   };
 }
 
 export default function AhorrosPage() {
   const viewMode = useSessionStore((s) => s.viewMode);
+  const displayCurrency = useSessionStore((s) => s.displayCurrency);
   const isAdmin = useSessionStore((s) => s.isAdmin);
+  const { people } = useHouseholdPeople();
 
   const savings = useFinanceStore((s) => s.savings);
   const addSaving = useFinanceStore((s) => s.addSaving);
@@ -48,7 +53,9 @@ export default function AhorrosPage() {
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(() => emptySaving(viewMode));
+  const [form, setForm] = useState(() =>
+    emptySaving(viewMode, displayCurrency)
+  );
   const [deleteSaving, setDeleteSaving] = useState<Saving | null>(null);
   const visible = useMemo(
     () => savings.filter((s) => matchesViewMode(s, viewMode)),
@@ -57,7 +64,7 @@ export default function AhorrosPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptySaving(viewMode));
+    setForm(emptySaving(viewMode, displayCurrency));
     setOpen(true);
   };
 
@@ -70,7 +77,7 @@ export default function AhorrosPage() {
     setForm({
       name: saving.name,
       currentValue: saving.currentValue,
-      targetValue: saving.targetValue,
+      targetValue: saving.targetValue ?? 0,
       monthlyContribution: saving.monthlyContribution,
       currency: saving.currency,
       owner: saving.owner,
@@ -80,16 +87,22 @@ export default function AhorrosPage() {
   };
 
   const save = () => {
-    if (!form.name.trim() || form.targetValue <= 0) {
-      toast.error("Nombre y meta objetivo son obligatorios");
+    if (!form.name.trim()) {
+      toast.error("El nombre es obligatorio");
       return;
     }
+    const payload = {
+      ...form,
+      targetValue: form.targetValue && form.targetValue > 0 ? form.targetValue : 0,
+    };
     if (editingId) {
-      updateSaving(editingId, form);
+      updateSaving(editingId, payload);
       toast.success("Ahorro actualizado");
     } else {
-      addSaving(form);
-      toast.success("Meta creada");
+      addSaving(payload);
+      toast.success(
+        hasSavingGoal(payload) ? "Meta creada" : "Cuenta de ahorro creada"
+      );
     }
     setOpen(false);
   };
@@ -102,36 +115,40 @@ export default function AhorrosPage() {
             Ahorros e Inversiones
           </h2>
           <p className="text-sm text-muted-foreground">
-            Metas, aportes del mes y progreso
+            Cuentas sin meta o fondos con objetivo y progreso
           </p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="size-4" />
-          Nueva meta
+          Nuevo ahorro
         </Button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
         {visible.length === 0 ? (
-          <Card className="md:col-span-2">
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              No hay metas en esta vista
-            </CardContent>
-          </Card>
+          <EmptyState
+            className="md:col-span-2"
+            title="Sin ahorros todavía"
+            description="Puedes crear una cuenta sin meta (solo saldo) o un fondo con objetivo."
+            action={{ label: "Nuevo ahorro", onClick: openCreate }}
+          />
         ) : (
           visible.map((s) => {
-            const pct =
-              s.targetValue > 0
-                ? Math.min(
-                    100,
-                    Math.round((s.currentValue / s.targetValue) * 100)
-                  )
-                : 0;
+            const withGoal = hasSavingGoal(s);
+            const pct = withGoal
+              ? Math.min(
+                  100,
+                  Math.round((s.currentValue / (s.targetValue as number)) * 100)
+                )
+              : null;
             return (
               <Card key={s.id}>
                 <CardHeader className="flex-row items-start justify-between gap-2">
                   <div>
                     <CardTitle className="text-base">{s.name}</CardTitle>
+                    <p className="text-[11px] text-muted-foreground">
+                      {withGoal ? "Con meta" : "Cuenta / saldo libre"}
+                    </p>
                     {s.notes && (
                       <p className="text-xs text-muted-foreground">{s.notes}</p>
                     )}
@@ -139,23 +156,51 @@ export default function AhorrosPage() {
                   <OwnerBadge owner={s.owner} />
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Progress value={pct} />
-                  <div className="flex justify-between text-sm">
-                    <Money amount={s.currentValue} currency={s.currency} />
-                    <span className="text-muted-foreground">
-                      Meta{" "}
-                      <Money amount={s.targetValue} currency={s.currency} />
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Aporte del mes:{" "}
-                    <Money
-                      amount={s.monthlyContribution}
-                      currency={s.currency}
-                      className="font-medium text-foreground"
-                    />{" "}
-                    · {pct}%
-                  </p>
+                  {withGoal && pct != null ? (
+                    <>
+                      <Progress value={pct} />
+                      <div className="flex justify-between text-sm">
+                        <Money amount={s.currentValue} currency={s.currency} />
+                        <span className="text-muted-foreground">
+                          Meta{" "}
+                          <Money
+                            amount={s.targetValue as number}
+                            currency={s.currency}
+                          />
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Aporte del mes:{" "}
+                        <Money
+                          amount={s.monthlyContribution}
+                          currency={s.currency}
+                          className="font-medium text-foreground"
+                        />{" "}
+                        · {pct}%
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm">
+                        <p className="text-xs text-muted-foreground">Saldo</p>
+                        <Money
+                          amount={s.currentValue}
+                          currency={s.currency}
+                          className="text-lg font-semibold"
+                        />
+                      </div>
+                      {s.monthlyContribution > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Aporte del mes:{" "}
+                          <Money
+                            amount={s.monthlyContribution}
+                            currency={s.currency}
+                            className="font-medium text-foreground"
+                          />
+                        </p>
+                      )}
+                    </>
+                  )}
                   <div className="flex gap-2">
                     <Button
                       size="sm"
@@ -173,8 +218,7 @@ export default function AhorrosPage() {
                           toast.error("Sin permiso");
                           return;
                         }
-                        removeSaving(s.id);
-                        toast.success("Eliminado");
+                        setDeleteSaving(s);
                       }}
                     >
                       Eliminar
@@ -190,7 +234,8 @@ export default function AhorrosPage() {
       <ResponsiveForm
         open={open}
         onOpenChange={setOpen}
-        title={editingId ? "Editar meta" : "Nueva meta"}
+        title={editingId ? "Editar ahorro" : "Nuevo ahorro"}
+        description="Cuenta sin meta (solo saldo) o fondo con objetivo opcional"
         footer={
           <>
             <Button variant="outline" onClick={() => setOpen(false)}>
@@ -200,14 +245,15 @@ export default function AhorrosPage() {
           </>
         }
       >
-        <Field label="Fondo / Meta">
+        <Field label="Nombre">
           <Input
+            placeholder="Ej. Cuenta de ahorros, viaje, emergencia…"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Valor actual">
+          <Field label="Saldo actual">
             <Input
               type="number"
               min={0}
@@ -220,22 +266,27 @@ export default function AhorrosPage() {
               }
             />
           </Field>
-          <Field label="Meta objetivo">
+          <Field label="Meta objetivo (opcional)">
             <Input
               type="number"
               min={0}
+              placeholder="Vacío = sin meta"
               value={form.targetValue || ""}
               onChange={(e) =>
                 setForm((f) => ({
                   ...f,
-                  targetValue: Number(e.target.value) || 0,
+                  targetValue:
+                    e.target.value === "" ? 0 : Number(e.target.value) || 0,
                 }))
               }
             />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Déjalo en 0 si es solo una cuenta donde entra dinero.
+            </p>
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Aporte del mes">
+          <Field label="Aporte del mes (opcional)">
             <Input
               type="number"
               min={0}
@@ -273,8 +324,11 @@ export default function AhorrosPage() {
               }))
             }
           >
-            <option value="Yamil">Yamil</option>
-            <option value="Liz">Liz</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
             <option value="Shared">Shared</option>
           </NativeSelect>
         </Field>
@@ -287,6 +341,25 @@ export default function AhorrosPage() {
           />
         </Field>
       </ResponsiveForm>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteSaving)}
+        onOpenChange={(o) => {
+          if (!o) setDeleteSaving(null);
+        }}
+        title="¿Eliminar ahorro?"
+        description={
+          deleteSaving
+            ? `Se eliminará «${deleteSaving.name}».`
+            : ""
+        }
+        onConfirm={() => {
+          if (!deleteSaving) return;
+          removeSaving(deleteSaving.id);
+          toast.success("Eliminado");
+          setDeleteSaving(null);
+        }}
+      />
     </div>
   );
 }

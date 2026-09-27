@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { MonthNavigator } from "@/components/shared/MonthNavigator";
@@ -34,14 +35,15 @@ import {
 
 function emptyIncome(
   viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
-  periodKey: string
+  periodKey: string,
+  displayCurrency: Currency = "COP"
 ): Omit<Income, "id"> {
   const owner: Ownership =
     viewMode === "Combined" ? "Shared" : viewMode;
   return {
     source: "",
     owner,
-    currency: owner === "Yamil" ? "USD" : "COP",
+    currency: displayCurrency,
     amount: 0,
     type: "Fijo",
     date: `${periodKey}-01`,
@@ -86,7 +88,9 @@ export default function IngresosPage() {
   const [periodKey, setPeriodKey] = useState(currentPeriodKey);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(() => emptyIncome(viewMode, periodKey));
+  const [form, setForm] = useState(() =>
+    emptyIncome(viewMode, periodKey, displayCurrency)
+  );
 
   const [tplOpen, setTplOpen] = useState(false);
   const [tplEditingId, setTplEditingId] = useState<string | null>(null);
@@ -120,7 +124,7 @@ export default function IngresosPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyIncome(viewMode, periodKey));
+    setForm(emptyIncome(viewMode, periodKey, displayCurrency));
     setOpen(true);
   };
 
@@ -222,12 +226,14 @@ export default function IngresosPage() {
 
         <TabsContent value="mes" className="mt-4 space-y-2">
           {visible.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                Sin ingresos este mes. Revisa Plantillas (sueldos y arriendos) o
-                añade uno manual.
-              </CardContent>
-            </Card>
+            <EmptyState
+              title="Sin ingresos este mes"
+              description="Crea plantillas de sueldo/arriendo o registra un ingreso manual."
+              action={{
+                label: "Nuevo ingreso",
+                onClick: openCreate,
+              }}
+            />
           ) : (
             visible.map((i) => {
               const inCop = toDisplayAmount(i.amount, i.currency, "COP", trm);
@@ -302,7 +308,21 @@ export default function IngresosPage() {
               Nueva plantilla
             </Button>
           </div>
-          {incomeTemplates.map((t) => (
+          {incomeTemplates.length === 0 ? (
+            <EmptyState
+              title="Sin plantillas de ingreso"
+              description="Sueldo, arriendo u otros ingresos fijos: se generan cada mes al abrir el periodo."
+              action={{
+                label: "Crear plantilla",
+                onClick: () => {
+                  setTplEditingId(null);
+                  setTplForm(emptyTemplate(viewMode));
+                  setTplOpen(true);
+                },
+              }}
+            />
+          ) : (
+            incomeTemplates.map((t) => (
             <Card key={t.id} size="sm">
               <CardContent className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
@@ -364,7 +384,8 @@ export default function IngresosPage() {
                 </Button>
               </CardContent>
             </Card>
-          ))}
+            ))
+          )}
           <p className="text-xs text-muted-foreground">
             Para arriendos u otros fijos:{" "}
             <strong>Nueva plantilla</strong> → Owner Shared → monto, día de
@@ -403,8 +424,6 @@ export default function IngresosPage() {
                 setForm((f) => ({
                   ...f,
                   owner,
-                  currency:
-                    owner === "Yamil" && !editingId ? "USD" : f.currency,
                 }));
               }}
             >
@@ -604,7 +623,7 @@ export default function IngresosPage() {
         }
         impact={
           deleteTarget?.kind === "income"
-            ? "Los totales de ingresos del mes (header, dashboard, ciclo y reporte) se actualizarán al instante."
+            ? "Los totales de ingresos del mes (header, dashboard y reporte) se actualizarán al instante."
             : "No borra ingresos ya generados en meses anteriores; solo deja de crear futuros."
         }
         onConfirm={() => {

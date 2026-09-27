@@ -14,6 +14,8 @@ import {
 import { AlertTriangle, PiggyBank, TrendingUp } from "lucide-react";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OnboardingChecklist } from "@/components/shared/OnboardingChecklist";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Money } from "@/components/shared/Money";
 import { MonthlyReportButton } from "@/components/shared/MonthlyReportButton";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
@@ -24,6 +26,8 @@ import {
   formatPeriodLabel,
 } from "@/lib/payCycle";
 import { computeSummary, matchesViewMode } from "@/lib/summary";
+import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
+import { useOnboardingSteps } from "@/hooks/useOnboardingSteps";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { cn } from "@/lib/utils";
@@ -37,6 +41,8 @@ export default function DashboardPage() {
   const expenses = useFinanceStore((s) => s.expenses);
   const incomes = useFinanceStore((s) => s.incomes);
   const savings = useFinanceStore((s) => s.savings);
+  const { people } = useHouseholdPeople();
+  const { isEmptyHome } = useOnboardingSteps();
 
   const periodKey = currentPeriodKey();
 
@@ -58,7 +64,7 @@ export default function DashboardPage() {
   const chartData = useMemo(() => {
     const monthIncomes = filterByPeriodKey(incomes, periodKey);
     const monthExpenses = filterByPeriodKey(expenses, periodKey);
-    const owners = ["Yamil", "Liz", "Shared"] as const;
+    const owners = [...people.map((p) => p.id), "Shared"] as const;
     return owners.map((owner) => {
       const income = monthIncomes
         .filter((i) => i.owner === owner)
@@ -80,7 +86,7 @@ export default function DashboardPage() {
         Gastos: expense,
       };
     });
-  }, [incomes, expenses, displayCurrency, trm, periodKey]);
+  }, [incomes, expenses, displayCurrency, trm, periodKey, people]);
 
   const alerts = useMemo(() => {
     const today = new Date();
@@ -107,6 +113,16 @@ export default function DashboardPage() {
         </div>
         <MonthlyReportButton />
       </div>
+
+      <OnboardingChecklist />
+
+      {isEmptyHome ? (
+        <EmptyState
+          title="Aún no hay movimientos"
+          description="Cuando crees plantillas y registres pagos o ingresos, aquí verás el resumen del mes."
+          action={{ label: "Ir a Gastos / Obligaciones", href: "/gastos" }}
+        />
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
@@ -220,10 +236,13 @@ export default function DashboardPage() {
 
       <div className="grid gap-3 md:grid-cols-2">
         {visibleSavings.map((s) => {
-          const pct = Math.min(
-            100,
-            Math.round((s.currentValue / s.targetValue) * 100)
-          );
+          const withGoal = (s.targetValue ?? 0) > 0;
+          const pct = withGoal
+            ? Math.min(
+                100,
+                Math.round((s.currentValue / (s.targetValue as number)) * 100)
+              )
+            : null;
           return (
             <Card key={s.id}>
               <CardHeader className="flex-row items-center justify-between gap-2">
@@ -231,16 +250,25 @@ export default function DashboardPage() {
                 <OwnerBadge owner={s.owner} />
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <Money amount={s.currentValue} currency={s.currency} />
-                  <span className="text-muted-foreground">{pct}%</span>
-                </div>
+                {withGoal && pct != null ? (
+                  <>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <Money amount={s.currentValue} currency={s.currency} />
+                      <span className="text-muted-foreground">{pct}%</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Saldo</span>
+                    <Money amount={s.currentValue} currency={s.currency} />
+                  </div>
+                )}
               </CardContent>
             </Card>
           );

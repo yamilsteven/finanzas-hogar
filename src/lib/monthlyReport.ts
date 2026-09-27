@@ -1,4 +1,5 @@
 import { formatMoney, toDisplayAmount } from "@/lib/currency";
+import { APP_NAME } from "@/lib/brand";
 import {
   filterByPeriodKey,
   formatPeriodLabel,
@@ -60,16 +61,18 @@ export function buildMonthlyReportText(params: {
     filterByPeriodKey(incomes, periodKey),
     "equal",
     displayCurrency,
-    trm
+    trm,
+    "Yamil",
+    "Liz"
   );
 
   const lines: string[] = [];
   const monthLabel = formatPeriodLabel(periodKey);
 
-  lines.push(`REPORTE MENSUAL — Finanzas Y&L`);
+  lines.push(`REPORTE MENSUAL — ${APP_NAME}`);
   lines.push(`Mes: ${monthLabel}`);
   lines.push(
-    `Vista: ${viewMode === "Combined" ? "Familiar" : viewMode} · Moneda: ${displayCurrency} · TRM: ${formatMoney(trm, "COP")}`
+    `Vista: ${viewMode === "Combined" ? "Hogar" : viewMode} · Moneda: ${displayCurrency} · TRM: ${formatMoney(trm, "COP")}`
   );
   lines.push(`Generado: ${new Date().toLocaleString("es-CO")}`);
   lines.push("");
@@ -107,8 +110,12 @@ export function buildMonthlyReportText(params: {
 
   lines.push("=== CIERRE SHARED ===");
   lines.push(`Total shared pagado: ${formatMoney(settlement.totalShared, displayCurrency)}`);
-  lines.push(`Aportó Yamil: ${formatMoney(settlement.yamilPaid, displayCurrency)}`);
-  lines.push(`Aportó Liz: ${formatMoney(settlement.lizPaid, displayCurrency)}`);
+  lines.push(
+    `Aportó ${settlement.personA}: ${formatMoney(settlement.aPaid, displayCurrency)}`
+  );
+  lines.push(
+    `Aportó ${settlement.personB}: ${formatMoney(settlement.bPaid, displayCurrency)}`
+  );
   lines.push("");
 
   lines.push("=== DEUDAS (SALDO ACTUAL) ===");
