@@ -13,6 +13,10 @@ import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
 import { APP_NAME } from "@/lib/brand";
 import { formatMoney } from "@/lib/currency";
 import { getSupabaseConfig } from "@/lib/supabase/config";
+import {
+  createInvitation,
+  inviteUrl,
+} from "@/lib/supabase/adminApi";
 import { useOnboardingStore } from "@/hooks/useOnboardingSteps";
 import { useAuthStore } from "@/store/authStore";
 import { useFinanceStore } from "@/store/financeStore";
@@ -49,6 +53,15 @@ export default function PerfilPage() {
   const [depNotes, setDepNotes] = useState("");
   const [editingDepId, setEditingDepId] = useState<string | null>(null);
 
+  const [invEmail, setInvEmail] = useState("");
+  const [invDisplay, setInvDisplay] = useState("");
+  const [invKey, setInvKey] = useState("b");
+  const [inviting, setInviting] = useState(false);
+
+  const canInvite =
+    Boolean(household) &&
+    (myMembership?.role === "owner" || myMembership?.role === "member");
+
   const handleSignOut = async () => {
     await signOut();
     toast.success("Sesión cerrada");
@@ -72,6 +85,36 @@ export default function PerfilPage() {
     setDepName("");
     setDepNotes("");
     setEditingDepId(null);
+  };
+
+  const onInvitePartner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!household) return;
+    setInviting(true);
+    const res = await createInvitation({
+      householdId: household.id,
+      email: invEmail,
+      displayName: invDisplay,
+      memberKey: invKey || "b",
+      role: "member",
+    });
+    setInviting(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    if (res.token) {
+      const url = inviteUrl(res.token);
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Invitación creada · link copiado");
+      } catch {
+        toast.message(url);
+      }
+    }
+    setInvEmail("");
+    setInvDisplay("");
+    setInvKey("b");
   };
 
   return (
@@ -116,6 +159,51 @@ export default function PerfilPage() {
               <LogOut className="size-3.5" />
               Cerrar sesión
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {configured && canInvite && household && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Invitar a tu pareja / miembro</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Crea un link para que se unan a «{household.name}». Ellos
+              crean cuenta o inician sesión con ese email y aceptan.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={onInvitePartner} className="space-y-3">
+              <Field label="Email">
+                <Input
+                  type="email"
+                  value={invEmail}
+                  onChange={(e) => setInvEmail(e.target.value)}
+                  required
+                  placeholder="pareja@email.com"
+                />
+              </Field>
+              <Field label="Nombre visible">
+                <Input
+                  value={invDisplay}
+                  onChange={(e) => setInvDisplay(e.target.value)}
+                  required
+                  placeholder="Liz"
+                />
+              </Field>
+              <Field label="Clave corta (member_key)">
+                <Input
+                  value={invKey}
+                  onChange={(e) => setInvKey(e.target.value)}
+                  required
+                  placeholder="b"
+                />
+              </Field>
+              <Button type="submit" size="sm" disabled={inviting}>
+                <Plus className="size-3.5" />
+                {inviting ? "Creando…" : "Crear invitación y copiar link"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
       )}

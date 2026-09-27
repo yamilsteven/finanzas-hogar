@@ -5,7 +5,7 @@ import {
   formatPeriodLabel,
 } from "@/lib/payCycle";
 import { calculateSettlement } from "@/lib/settlement";
-import { computeSummary, matchesViewMode } from "@/lib/summary";
+import { computeSummary, matchesDebtViewMode, matchesViewMode } from "@/lib/summary";
 import type {
   Currency,
   Debt,
@@ -54,7 +54,7 @@ export function buildMonthlyReportText(params: {
   const monthExpenses = filterByPeriodKey(expenses, periodKey).filter((e) =>
     matchesViewMode(e, viewMode)
   );
-  const visibleDebts = debts.filter((d) => matchesViewMode(d, viewMode));
+  const visibleDebts = debts.filter((d) => matchesDebtViewMode(d, viewMode));
 
   const settlement = calculateSettlement(
     filterByPeriodKey(expenses, periodKey),
@@ -84,6 +84,9 @@ export function buildMonthlyReportText(params: {
   lines.push(`Balance mes: ${formatMoney(summary.freeBalance, displayCurrency)}`);
   lines.push(
     `Deudas (saldo): ${formatMoney(summary.totalDebts, displayCurrency)}`
+  );
+  lines.push(
+    `Ahorros (saldo): ${formatMoney(summary.totalSavings, displayCurrency)}`
   );
   lines.push(
     `Capacidad ahorro: ${formatMoney(summary.savingsCapacity, displayCurrency)}`

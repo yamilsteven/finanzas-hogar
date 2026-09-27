@@ -3,7 +3,7 @@ import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TrmBootstrap } from "@/components/providers/TrmBootstrap";
 import { AppShell } from "@/components/layout/AppShell";
-import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
+import { APP_NAME, APP_SHORT, APP_TAGLINE } from "@/lib/brand";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -19,6 +19,21 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: APP_NAME,
   description: APP_TAGLINE,
+  applicationName: APP_NAME,
+  appleWebApp: {
+    capable: true,
+    title: APP_SHORT,
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }],
+    apple: [{ url: "/apple-icon.png", type: "image/png" }],
+  },
+  manifest: "/manifest.webmanifest",
+  themeColor: "#0F766E",
 };
 
 export default function RootLayout({

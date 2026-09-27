@@ -21,11 +21,19 @@ export type ExpenseCategory =
   | "Salud"
   | "Vivienda"
   | "Suscripciones"
+  | "Seguros"
   | "Otro";
 /** Recibos públicos con consumo medible mes a mes */
 export type UtilityService = "agua" | "gas" | "energia";
 export type IncomeType = "Fijo" | "Variable";
 export type SettlementMode = "equal" | "income_share";
+export type InsuranceType =
+  | "SOAT"
+  | "Vehiculo"
+  | "Hogar"
+  | "Vida"
+  | "Salud"
+  | "Otro";
 
 /** Hijo u otro dependiente del hogar (sin cuenta; solo etiqueta de gastos) */
 export type Dependent = {
@@ -72,6 +80,33 @@ export interface Debt {
   dueDate: string;
   owner: Ownership;
   termMonths?: number;
+  notes?: string;
+  /** Débito automático de la cuota fija cada mes */
+  autoPay?: boolean;
+  /** Quién figura como pagador en el gasto automático (útil si owner = Shared) */
+  autoPayPaidBy?: UserId;
+  /** Último periodo (yyyy-MM) al que ya se capitalizó interés */
+  lastInterestPeriod?: string;
+  /** Último periodo (yyyy-MM) con pago automático aplicado */
+  lastAutoPayPeriod?: string;
+}
+
+export interface Insurance {
+  id: string;
+  name: string;
+  provider: string;
+  type: InsuranceType;
+  /** Prima / valor del seguro */
+  premium: number;
+  currency: Currency;
+  /** Inicio de vigencia */
+  startDate: string;
+  /** Fecha de caducidad / fin de vigencia */
+  endDate: string;
+  /** Renovación cada N meses (12 = anual); opcional */
+  renewsEveryMonths?: number;
+  owner: Ownership;
+  policyNumber?: string;
   notes?: string;
 }
 
@@ -143,6 +178,11 @@ export interface RecurringExpenseTemplate {
   utilityService?: UtilityService;
   /** Dependiente/hijo asociado (se copia al materializar el mes) */
   beneficiaryId?: string;
+  /**
+   * Débito automático (Netflix, iCloud…): al materializar el mes
+   * queda Pagado con el monto de la plantilla (no aplica a recibos).
+   */
+  autoDebit?: boolean;
 }
 
 export interface RecurringIncomeTemplate {
@@ -185,6 +225,8 @@ export interface FinancialSummary {
   totalIncome: number;
   totalExpenses: number;
   totalDebts: number;
+  /** Suma de saldos actuales de ahorros (stock) */
+  totalSavings: number;
   freeBalance: number;
   savingsCapacity: number;
 }

@@ -10,7 +10,13 @@ import {
   mockIncomes,
   mockSavings,
 } from "@/data/mockData";
-import { materializeMissing, periodsToEnsure } from "@/lib/payCycle";
+import { applyDebtMonthlyCycles } from "@/lib/debtCycle";
+import {
+  applyAutoDebitToPending,
+  currentPeriodKey,
+  materializeMissing,
+  periodsToEnsure,
+} from "@/lib/payCycle";
 import {
   clearHouseholdFinance,
   loadHouseholdFinance,
@@ -22,6 +28,7 @@ import {
   syncDeleteExpenseTemplate,
   syncDeleteIncome,
   syncDeleteIncomeTemplate,
+  syncDeleteInsurance,
   syncDeleteSaving,
   syncUpsertDebt,
   syncUpsertDependent,
@@ -29,6 +36,7 @@ import {
   syncUpsertExpenseTemplate,
   syncUpsertIncome,
   syncUpsertIncomeTemplate,
+  syncUpsertInsurance,
   syncUpsertSaving,
   type HouseholdFinanceBundle,
 } from "@/lib/supabase/financeSync";
@@ -37,6 +45,7 @@ import type {
   Dependent,
   Expense,
   Income,
+  Insurance,
   RecurringExpenseTemplate,
   RecurringIncomeTemplate,
   Saving,
@@ -58,6 +67,7 @@ interface FinanceState {
   expenseTemplates: RecurringExpenseTemplate[];
   incomeTemplates: RecurringIncomeTemplate[];
   dependents: Dependent[];
+  insurances: Insurance[];
   /** Hogar cloud activo; null = solo local */
   syncHouseholdId: string | null;
   syncUserId: string | null;
@@ -77,6 +87,9 @@ interface FinanceState {
   addSaving: (saving: Omit<Saving, "id">) => void;
   updateSaving: (id: string, patch: Partial<Saving>) => void;
   removeSaving: (id: string) => void;
+  addInsurance: (insurance: Omit<Insurance, "id">) => void;
+  updateInsurance: (id: string, patch: Partial<Insurance>) => void;
+  removeInsurance: (id: string) => void;
   addExpenseTemplate: (t: Omit<RecurringExpenseTemplate, "id">) => void;
   updateExpenseTemplate: (
     id: string,
@@ -112,6 +125,7 @@ function emptyBundle(): HouseholdFinanceBundle {
     expenseTemplates: [],
     incomeTemplates: [],
     dependents: [],
+    insurances: [],
   };
 }
 
@@ -189,7 +203,12 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       addDebt: (debt) => {
-        const row = { ...debt, id: newFinanceId() };
+        const row = {
+          ...debt,
+          id: newFinanceId(),
+          lastInterestPeriod:
+            debt.lastInterestPeriod ?? currentPeriodKey(),
+        };
         set((s) => ({ debts: [...s.debts, row] }));
         withCloud(get, set, () =>
           syncUpsertDebt(
@@ -335,8 +354,46 @@ export const useFinanceStore = create<FinanceState>()(
         withCloud(get, set, () => syncDeleteSaving(id));
       },
 
+      addInsurance: (insurance) => {
+        const row = { ...insurance, id: newFinanceId() };
+        set((s) => ({ insurances: [...s.insurances, row] }));
+        withCloud(get, set, () =>
+          syncUpsertInsurance(
+            get().syncHouseholdId!,
+            row,
+            get().syncUserId ?? undefined
+          )
+        );
+      },
+      updateInsurance: (id, patch) => {
+        set((s) => ({
+          insurances: s.insurances.map((ins) =>
+            ins.id === id ? { ...ins, ...patch } : ins
+          ),
+        }));
+        const row = get().insurances.find((ins) => ins.id === id);
+        if (!row) return;
+        withCloud(get, set, () =>
+          syncUpsertInsurance(
+            get().syncHouseholdId!,
+            row,
+            get().syncUserId ?? undefined
+          )
+        );
+      },
+      removeInsurance: (id) => {
+        set((s) => ({
+          insurances: s.insurances.filter((ins) => ins.id !== id),
+        }));
+        withCloud(get, set, () => syncDeleteInsurance(id));
+      },
+
       addExpenseTemplate: (t) => {
-        const row = { ...t, id: newFinanceId() };
+        const row = {
+          ...t,
+          autoDebit: t.utilityService ? false : Boolean(t.autoDebit),
+          id: newFinanceId(),
+        };
         set((s) => ({
           expenseTemplates: [...s.expenseTemplates, row],
         }));
@@ -347,12 +404,16 @@ export const useFinanceStore = create<FinanceState>()(
             get().syncUserId ?? undefined
           )
         );
+        if (row.autoDebit) get().ensurePeriodsMaterialized();
       },
       updateExpenseTemplate: (id, patch) => {
         set((s) => ({
-          expenseTemplates: s.expenseTemplates.map((t) =>
-            t.id === id ? { ...t, ...patch } : t
-          ),
+          expenseTemplates: s.expenseTemplates.map((t) => {
+            if (t.id !== id) return t;
+            const next = { ...t, ...patch };
+            if (next.utilityService) next.autoDebit = false;
+            return next;
+          }),
         }));
         const row = get().expenseTemplates.find((t) => t.id === id);
         if (!row) return;
@@ -363,6 +424,9 @@ export const useFinanceStore = create<FinanceState>()(
             get().syncUserId ?? undefined
           )
         );
+        if (row.autoDebit || patch.autoDebit !== undefined) {
+          get().ensurePeriodsMaterialized();
+        }
       },
       removeExpenseTemplate: (id) => {
         set((s) => ({
@@ -446,9 +510,11 @@ export const useFinanceStore = create<FinanceState>()(
         const state = get();
         let expenses = [...state.expenses];
         let incomes = [...state.incomes];
+        let debts = [...state.debts];
         let changed = false;
         const createdExpenses: Expense[] = [];
         const createdIncomes: Income[] = [];
+        const updatedDebts: Debt[] = [];
 
         for (const key of keys) {
           const { expenses: ne, incomes: ni } = materializeMissing(
@@ -468,15 +534,49 @@ export const useFinanceStore = create<FinanceState>()(
           }
         }
 
+        const autoDebit = applyAutoDebitToPending(
+          state.expenseTemplates,
+          expenses,
+          keys
+        );
+        if (autoDebit.updated.length) {
+          expenses = autoDebit.expenses;
+          changed = true;
+        }
+
+        const cycle = applyDebtMonthlyCycles(
+          debts,
+          expenses,
+          keys,
+          () => newFinanceId()
+        );
+        if (cycle.changed) {
+          debts = cycle.debts;
+          expenses = cycle.expenses;
+          createdExpenses.push(...cycle.createdExpenses);
+          updatedDebts.push(...cycle.updatedDebts);
+          changed = true;
+        }
+
         if (!changed) return;
-        set({ expenses, incomes });
+        set({ expenses, incomes, debts });
 
         const householdId = get().syncHouseholdId;
         const userId = get().syncUserId ?? undefined;
         if (!householdId) return;
 
         withCloud(get, set, async () => {
+          for (const d of updatedDebts) {
+            const res = await syncUpsertDebt(householdId, d, userId);
+            if (res.error) return res;
+          }
           for (const e of createdExpenses) {
+            const res = await syncUpsertExpense(householdId, e, userId);
+            if (res.error) return res;
+          }
+          for (const e of autoDebit.updated) {
+            // Evitar doble upsert si también está en created (no debería)
+            if (createdExpenses.some((c) => c.id === e.id)) continue;
             const res = await syncUpsertExpense(householdId, e, userId);
             if (res.error) return res;
           }
@@ -526,6 +626,7 @@ export const useFinanceStore = create<FinanceState>()(
           expenseTemplates,
           incomeTemplates,
           dependents: [],
+          insurances: [],
         });
 
         if (!householdId) return;
@@ -542,6 +643,7 @@ export const useFinanceStore = create<FinanceState>()(
               expenseTemplates,
               incomeTemplates,
               dependents: [],
+              insurances: [],
             },
             userId
           );
@@ -567,7 +669,7 @@ export const useFinanceStore = create<FinanceState>()(
     }),
     {
       name: "finanzas-data",
-      version: 7,
+      version: 8,
       partialize: (state) => ({
         // Cache local; la fuente de verdad en cloud es Supabase al hidratar
         debts: state.debts,
@@ -577,6 +679,7 @@ export const useFinanceStore = create<FinanceState>()(
         expenseTemplates: state.expenseTemplates,
         incomeTemplates: state.incomeTemplates,
         dependents: state.dependents,
+        insurances: state.insurances,
       }),
       migrate: (persisted, fromVersion) => {
         const p = persisted as Partial<FinanceState>;
@@ -606,6 +709,7 @@ export const useFinanceStore = create<FinanceState>()(
           expenseTemplates: p.expenseTemplates ?? [],
           incomeTemplates: p.incomeTemplates ?? [],
           dependents: p.dependents ?? [],
+          insurances: p.insurances ?? [],
         };
       },
     }

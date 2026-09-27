@@ -11,6 +11,8 @@ import type {
   ExpenseStatus,
   Income,
   IncomeType,
+  Insurance,
+  InsuranceType,
   MinPaymentMode,
   Ownership,
   RateType,
@@ -28,6 +30,7 @@ export type HouseholdFinanceBundle = {
   expenseTemplates: RecurringExpenseTemplate[];
   incomeTemplates: RecurringIncomeTemplate[];
   dependents: Dependent[];
+  insurances: Insurance[];
 };
 
 export function newFinanceId(): string {
@@ -63,6 +66,16 @@ function mapDebt(row: Record<string, unknown>): Debt {
     owner: row.owner_scope as Ownership,
     termMonths: row.term_months == null ? undefined : num(row.term_months),
     notes: row.notes ? String(row.notes) : undefined,
+    autoPay: Boolean(row.auto_pay),
+    autoPayPaidBy: row.auto_pay_paid_by
+      ? String(row.auto_pay_paid_by)
+      : undefined,
+    lastInterestPeriod: row.last_interest_period
+      ? String(row.last_interest_period)
+      : undefined,
+    lastAutoPayPeriod: row.last_auto_pay_period
+      ? String(row.last_auto_pay_period)
+      : undefined,
   };
 }
 
@@ -83,6 +96,10 @@ function debtToRow(householdId: string, d: Debt, userId?: string) {
     owner_scope: d.owner,
     term_months: d.termMonths ?? null,
     notes: d.notes ?? null,
+    auto_pay: Boolean(d.autoPay),
+    auto_pay_paid_by: d.autoPayPaidBy ?? null,
+    last_interest_period: d.lastInterestPeriod ?? null,
+    last_auto_pay_period: d.lastAutoPayPeriod ?? null,
     updated_by: userId ?? null,
     created_by: userId ?? null,
   };
@@ -220,6 +237,7 @@ function mapExpenseTemplate(
     beneficiaryId: row.beneficiary_id
       ? String(row.beneficiary_id)
       : undefined,
+    autoDebit: Boolean(row.auto_debit),
   };
 }
 
@@ -241,6 +259,7 @@ function expenseTemplateToRow(
     active: t.active,
     utility_service: t.utilityService ?? null,
     beneficiary_id: t.beneficiaryId ?? null,
+    auto_debit: Boolean(t.autoDebit) && !t.utilityService,
     updated_by: userId ?? null,
     created_by: userId ?? null,
   };
@@ -306,6 +325,52 @@ function dependentToRow(
   };
 }
 
+function mapInsurance(row: Record<string, unknown>): Insurance {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    provider: String(row.provider ?? ""),
+    type: row.type as InsuranceType,
+    premium: num(row.premium),
+    currency: row.currency as Currency,
+    startDate: String(row.start_date ?? "").slice(0, 10),
+    endDate: String(row.end_date ?? "").slice(0, 10),
+    renewsEveryMonths:
+      row.renews_every_months == null
+        ? undefined
+        : num(row.renews_every_months),
+    owner: row.owner_scope as Ownership,
+    policyNumber: row.policy_number
+      ? String(row.policy_number)
+      : undefined,
+    notes: row.notes ? String(row.notes) : undefined,
+  };
+}
+
+function insuranceToRow(
+  householdId: string,
+  ins: Insurance,
+  userId?: string
+) {
+  return {
+    id: ins.id,
+    household_id: householdId,
+    name: ins.name,
+    provider: ins.provider,
+    type: ins.type,
+    premium: ins.premium,
+    currency: ins.currency,
+    start_date: ins.startDate || null,
+    end_date: ins.endDate || null,
+    renews_every_months: ins.renewsEveryMonths ?? null,
+    owner_scope: ins.owner,
+    policy_number: ins.policyNumber ?? null,
+    notes: ins.notes ?? null,
+    updated_by: userId ?? null,
+    created_by: userId ?? null,
+  };
+}
+
 export async function loadHouseholdFinance(
   householdId: string
 ): Promise<{ data?: HouseholdFinanceBundle; error?: string }> {
@@ -320,6 +385,7 @@ export async function loadHouseholdFinance(
     expenses,
     incomes,
     savings,
+    insurances,
   ] = await Promise.all([
     supabase.from("debts").select("*").eq("household_id", householdId),
     supabase
@@ -334,6 +400,7 @@ export async function loadHouseholdFinance(
     supabase.from("expenses").select("*").eq("household_id", householdId),
     supabase.from("incomes").select("*").eq("household_id", householdId),
     supabase.from("savings").select("*").eq("household_id", householdId),
+    supabase.from("insurances").select("*").eq("household_id", householdId),
   ]);
 
   const firstError =
@@ -346,6 +413,9 @@ export async function loadHouseholdFinance(
     savings.error;
 
   if (firstError) return { error: firstError.message };
+
+  // insurances puede faltar hasta correr migración 005
+  const insuranceRows = insurances.error ? [] : (insurances.data ?? []);
 
   return {
     data: {
@@ -368,6 +438,9 @@ export async function loadHouseholdFinance(
       savings: (savings.data ?? []).map((r) =>
         mapSaving(r as Record<string, unknown>)
       ),
+      insurances: insuranceRows.map((r) =>
+        mapInsurance(r as Record<string, unknown>)
+      ),
     },
   };
 }
@@ -379,7 +452,8 @@ type TableName =
   | "savings"
   | "expense_templates"
   | "income_templates"
-  | "dependents";
+  | "dependents"
+  | "insurances";
 
 async function upsertRow(
   table: TableName,
@@ -451,6 +525,21 @@ export async function syncDeleteSaving(id: string) {
   return deleteRow("savings", id);
 }
 
+export async function syncUpsertInsurance(
+  householdId: string,
+  insurance: Insurance,
+  userId?: string
+) {
+  return upsertRow(
+    "insurances",
+    insuranceToRow(householdId, insurance, userId)
+  );
+}
+
+export async function syncDeleteInsurance(id: string) {
+  return deleteRow("insurances", id);
+}
+
 export async function syncUpsertExpenseTemplate(
   householdId: string,
   t: RecurringExpenseTemplate,
@@ -504,6 +593,7 @@ export async function clearHouseholdFinance(
     "expenses",
     "incomes",
     "savings",
+    "insurances",
     "expense_templates",
     "income_templates",
     "dependents",
@@ -560,6 +650,12 @@ export async function pushHouseholdFinance(
     {
       table: "savings",
       rows: bundle.savings.map((s) => savingToRow(householdId, s, userId)),
+    },
+    {
+      table: "insurances",
+      rows: (bundle.insurances ?? []).map((ins) =>
+        insuranceToRow(householdId, ins, userId)
+      ),
     },
   ];
 

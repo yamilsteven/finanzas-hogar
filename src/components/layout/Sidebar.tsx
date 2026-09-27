@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Home,
   Shield,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME, APP_SHORT } from "@/lib/brand";
@@ -25,6 +26,7 @@ const baseNavItems = [
   { href: "/deudas", label: "Deudas", icon: CreditCard },
   { href: "/ingresos", label: "Ingresos", icon: Wallet },
   { href: "/ahorros", label: "Ahorros", icon: PiggyBank },
+  { href: "/seguros", label: "Seguros", icon: ShieldCheck },
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
 
@@ -32,8 +34,8 @@ const baseMobileNavItems = [
   { href: "/", label: "Inicio", icon: Home },
   { href: "/gastos", label: "Pagos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
-  { href: "/ingresos", label: "Ingresos", icon: Wallet },
   { href: "/ahorros", label: "Ahorros", icon: PiggyBank },
+  { href: "/seguros", label: "Seguros", icon: ShieldCheck },
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
 

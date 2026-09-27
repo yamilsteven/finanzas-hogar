@@ -26,7 +26,7 @@ import {
   periodKeyFromDate,
 } from "@/lib/payCycle";
 import { calculateSettlement } from "@/lib/settlement";
-import { matchesViewMode } from "@/lib/summary";
+import { matchesDebtViewMode, matchesViewMode } from "@/lib/summary";
 import { formatConsumption } from "@/lib/utility";
 import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
 import { useFinanceStore } from "@/store/financeStore";
@@ -57,6 +57,7 @@ const categories: ExpenseCategory[] = [
   "Salud",
   "Vivienda",
   "Suscripciones",
+  "Seguros",
   "Otro",
 ];
 
@@ -82,7 +83,7 @@ const emptyTemplate = (
   defaultPaidBy: UserId
 ): Omit<RecurringExpenseTemplate, "id"> => ({
   description: "",
-  category: "Servicios",
+  category: "Suscripciones",
   amount: 0,
   currency: "COP",
   paidBy: viewMode === "Combined" ? defaultPaidBy : (viewMode as UserId),
@@ -90,6 +91,7 @@ const emptyTemplate = (
   dayOfMonth: 1,
   active: true,
   utilityService: undefined,
+  autoDebit: false,
 });
 
 function resolveUtilityService(
@@ -142,6 +144,7 @@ export default function GastosPage() {
     "all" | "none" | string
   >("all");
   const [open, setOpen] = useState(false);
+  const [formReadOnly, setFormReadOnly] = useState(false);
   const [mainTab, setMainTab] = useState("obligaciones");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(() => emptyForm(viewMode, periodKey, defaultPaidBy));
@@ -277,7 +280,7 @@ export default function GastosPage() {
   const visibleDebts = useMemo(
     () =>
       debts.filter(
-        (d) => matchesViewMode(d, viewMode) && d.balance > 0
+        (d) => matchesDebtViewMode(d, viewMode) && d.balance > 0
       ),
     [debts, viewMode]
   );
@@ -374,6 +377,7 @@ export default function GastosPage() {
 
   const openCreate = () => {
     setEditingId(null);
+    setFormReadOnly(false);
     setPaymentKind("libre");
     setSelectedDebtId("");
     setSelectedRecurringId("");
@@ -505,6 +509,7 @@ export default function GastosPage() {
   };
 
   const openPayObligation = (expense: Expense) => {
+    setFormReadOnly(false);
     if (expense.status === "Pagado") {
       openEdit(expense);
       return;
@@ -520,11 +525,7 @@ export default function GastosPage() {
     setOpen(true);
   };
 
-  const openEdit = (expense: Expense) => {
-    if (!canEdit(expense, viewMode, isAdmin)) {
-      toast.error("No puedes editar este gasto en la vista actual");
-      return;
-    }
+  const fillFormFromExpense = (expense: Expense) => {
     const utilityService = resolveUtilityService(expense, expenseTemplates);
     setEditingId(expense.id);
     setPaymentKind(
@@ -555,6 +556,21 @@ export default function GastosPage() {
       consumption: expense.consumption,
       beneficiaryId: expense.beneficiaryId,
     });
+  };
+
+  const openView = (expense: Expense) => {
+    fillFormFromExpense(expense);
+    setFormReadOnly(true);
+    setOpen(true);
+  };
+
+  const openEdit = (expense: Expense) => {
+    if (!canEdit(expense, viewMode, isAdmin)) {
+      toast.error("No puedes editar este gasto en la vista actual");
+      return;
+    }
+    fillFormFromExpense(expense);
+    setFormReadOnly(false);
     setOpen(true);
   };
 
@@ -688,12 +704,24 @@ export default function GastosPage() {
       toast.error("Completa la plantilla");
       return;
     }
+    const payload = {
+      ...tplForm,
+      autoDebit: tplForm.utilityService ? false : Boolean(tplForm.autoDebit),
+    };
     if (tplEditingId) {
-      updateExpenseTemplate(tplEditingId, tplForm);
-      toast.success("Plantilla actualizada");
+      updateExpenseTemplate(tplEditingId, payload);
+      toast.success(
+        payload.autoDebit
+          ? "Plantilla actualizada — débito automático activo"
+          : "Plantilla actualizada"
+      );
     } else {
-      addExpenseTemplate(tplForm);
-      toast.success("Plantilla creada — se materializa en cada mes");
+      addExpenseTemplate(payload);
+      toast.success(
+        payload.autoDebit
+          ? "Plantilla creada — cada mes se registrará como pagada"
+          : "Plantilla creada — se materializa en cada mes"
+      );
     }
     setTplOpen(false);
   };
@@ -928,13 +956,32 @@ export default function GastosPage() {
                           : ""}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant={pending ? "default" : "outline"}
-                      onClick={() => openPayObligation(e)}
-                    >
-                      {pending ? "Pagar" : "Ver / editar"}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      {pending && (
+                        <Button
+                          size="sm"
+                          onClick={() => openPayObligation(e)}
+                        >
+                          Pagar
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openView(e)}
+                      >
+                        Ver
+                      </Button>
+                      {!pending && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEdit(e)}
+                        >
+                          Editar
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -1017,6 +1064,13 @@ export default function GastosPage() {
                         {e.status}
                       </span>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openView(e)}
+                    >
+                      Ver
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -1128,6 +1182,11 @@ export default function GastosPage() {
                         Pausada
                       </span>
                     )}
+                    {t.autoDebit && !t.utilityService && (
+                      <span className="text-[10px] uppercase text-teal-700">
+                        Débito auto
+                      </span>
+                    )}
                     {t.utilityService && (
                       <span className="text-[10px] uppercase text-sky-700 dark:text-sky-300">
                         Recibo · {UTILITY_META[t.utilityService].unitShort}
@@ -1167,6 +1226,7 @@ export default function GastosPage() {
                       active: t.active,
                       utilityService: t.utilityService,
                       beneficiaryId: t.beneficiaryId,
+                      autoDebit: Boolean(t.autoDebit),
                     });
                     setTplOpen(true);
                   }}
@@ -1188,34 +1248,67 @@ export default function GastosPage() {
             ))
           )}
           <p className="text-xs text-muted-foreground">
-            Al abrir un mes, las plantillas activas generan gastos Pendiente
-            automáticamente (sin duplicar).
+            Al abrir un mes, las plantillas activas generan el gasto. Con{" "}
+            <span className="font-medium text-foreground">débito automático</span>{" "}
+            (Netflix, iCloud…) queda Pagado con el monto de la plantilla; sin él,
+            aparece Pendiente para confirmar.
           </p>
         </TabsContent>
       </Tabs>
 
       <ResponsiveForm
         open={open}
-        onOpenChange={setOpen}
-        title={editingId ? "Editar pago" : "Nuevo pago"}
-        description="Gasto libre, deuda, obligación del mes o recibo"
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setFormReadOnly(false);
+        }}
+        title={
+          formReadOnly
+            ? "Detalle del pago"
+            : editingId
+              ? "Editar pago"
+              : "Nuevo pago"
+        }
+        description={
+          formReadOnly
+            ? "Consulta el detalle; usa Editar si quieres cambiarlo"
+            : "Gasto libre, deuda, obligación del mes o recibo"
+        }
         footer={
-          <>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={save}>
-              {paymentKind === "deuda" && !editingId
-                ? "Pagar y bajar saldo"
-                : paymentKind === "recurrente" && !editingId
-                  ? "Registrar pago"
-                  : paymentKind === "recibo" && !editingId
-                    ? "Pagar recibo"
-                    : "Guardar"}
-            </Button>
-          </>
+          formReadOnly ? (
+            <>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Cerrar
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!editingId) return;
+                  const expense = expenses.find((x) => x.id === editingId);
+                  if (expense) openEdit(expense);
+                }}
+              >
+                Editar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={save}>
+                {paymentKind === "deuda" && !editingId
+                  ? "Pagar y bajar saldo"
+                  : paymentKind === "recurrente" && !editingId
+                    ? "Registrar pago"
+                    : paymentKind === "recibo" && !editingId
+                      ? "Pagar recibo"
+                      : "Guardar"}
+              </Button>
+            </>
+          )
         }
       >
+        <fieldset disabled={formReadOnly} className="space-y-3 border-0 p-0">
         {!editingId && (
           <Field label="Tipo de pago">
             <NativeSelect
@@ -1552,6 +1645,7 @@ export default function GastosPage() {
             <option value="Pagado">Pagado</option>
           </NativeSelect>
         </Field>
+        </fieldset>
       </ResponsiveForm>
 
       <ResponsiveForm
@@ -1617,6 +1711,7 @@ export default function GastosPage() {
                 ...f,
                 utilityService: v || undefined,
                 category: v ? "Servicios" : f.category,
+                autoDebit: v ? false : f.autoDebit,
                 description:
                   v && !f.description.trim()
                     ? `Recibo ${UTILITY_META[v].label.toLowerCase()}`
@@ -1635,8 +1730,31 @@ export default function GastosPage() {
             Si es recibo, al pagar pedirá el consumo del mes para la gráfica.
           </p>
         </Field>
+        <div className="rounded-lg border px-3 py-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Débito automático</p>
+              <p className="text-xs text-muted-foreground">
+                Ideal para Netflix, iCloud, Spotify… Cada mes se registra como
+                Pagado con este monto.
+              </p>
+            </div>
+            <Switch
+              checked={Boolean(tplForm.autoDebit) && !tplForm.utilityService}
+              disabled={Boolean(tplForm.utilityService)}
+              onCheckedChange={(checked) =>
+                setTplForm((f) => ({ ...f, autoDebit: checked }))
+              }
+            />
+          </div>
+          {tplForm.utilityService && (
+            <p className="text-xs text-amber-700">
+              No disponible en recibos (necesitan consumo al pagar).
+            </p>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Monto">
+          <Field label={tplForm.autoDebit ? "Monto del débito" : "Monto referencia"}>
             <Input
               type="number"
               min={0}

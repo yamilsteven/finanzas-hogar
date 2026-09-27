@@ -14,6 +14,7 @@ import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
 import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
+import { formatMoney, toDisplayAmount } from "@/lib/currency";
 import { matchesViewMode } from "@/lib/summary";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
@@ -43,6 +44,7 @@ function emptySaving(
 export default function AhorrosPage() {
   const viewMode = useSessionStore((s) => s.viewMode);
   const displayCurrency = useSessionStore((s) => s.displayCurrency);
+  const trm = useSessionStore((s) => s.trm);
   const isAdmin = useSessionStore((s) => s.isAdmin);
   const { people } = useHouseholdPeople();
 
@@ -60,6 +62,17 @@ export default function AhorrosPage() {
   const visible = useMemo(
     () => savings.filter((s) => matchesViewMode(s, viewMode)),
     [savings, viewMode]
+  );
+
+  const totalSavings = useMemo(
+    () =>
+      visible.reduce(
+        (sum, s) =>
+          sum +
+          toDisplayAmount(s.currentValue, s.currency, displayCurrency, trm),
+        0
+      ),
+    [visible, displayCurrency, trm]
   );
 
   const openCreate = () => {
@@ -123,6 +136,24 @@ export default function AhorrosPage() {
           Nuevo ahorro
         </Button>
       </div>
+
+      {visible.length > 0 && (
+        <Card size="sm">
+          <CardContent className="flex items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Total ahorros
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Suma de saldos en la vista actual
+              </p>
+            </div>
+            <p className="text-xl font-semibold tabular-nums text-teal-700">
+              {formatMoney(totalSavings, displayCurrency)}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2">
         {visible.length === 0 ? (

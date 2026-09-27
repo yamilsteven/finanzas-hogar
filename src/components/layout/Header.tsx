@@ -187,6 +187,13 @@ export function Header() {
             tone="warn"
           />
           <SummaryChip
+            label="Ahorros"
+            value={formatMoney(summary.totalSavings, displayCurrency, {
+              compact: true,
+            })}
+            tone="positive"
+          />
+          <SummaryChip
             label="Balance mes"
             value={formatMoney(summary.freeBalance, displayCurrency, {
               compact: true,

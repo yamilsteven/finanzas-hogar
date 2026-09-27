@@ -25,7 +25,7 @@ import {
   filterByPeriodKey,
   formatPeriodLabel,
 } from "@/lib/payCycle";
-import { computeSummary, matchesViewMode } from "@/lib/summary";
+import { computeSummary, matchesDebtViewMode, matchesViewMode } from "@/lib/summary";
 import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
 import { useOnboardingSteps } from "@/hooks/useOnboardingSteps";
 import { useFinanceStore } from "@/store/financeStore";
@@ -91,7 +91,7 @@ export default function DashboardPage() {
   const alerts = useMemo(() => {
     const today = new Date();
     return debts
-      .filter((d) => matchesViewMode(d, viewMode))
+      .filter((d) => matchesDebtViewMode(d, viewMode))
       .map((d) => ({
         debt: d,
         days: differenceInCalendarDays(parseISO(d.dueDate), today),
@@ -153,18 +153,22 @@ export default function DashboardPage() {
           <CardHeader className="pb-1">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <PiggyBank className="size-4" />
-              Metas activas
+              Total ahorros
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold">{visibleSavings.length}</p>
+            <p className="text-2xl font-semibold tabular-nums text-teal-700">
+              {formatMoney(summary.totalSavings, displayCurrency)}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              En la vista {viewMode === "Combined" ? "familiar" : viewMode}
+              {visibleSavings.length} cuenta
+              {visibleSavings.length === 1 ? "" : "s"} · vista{" "}
+              {viewMode === "Combined" ? "hogar" : viewMode}
             </p>
           </CardContent>
         </Card>
 
-        <Card className="sm:col-span-2 lg:col-span-1">
+        <Card>
           <CardHeader className="pb-1">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <AlertTriangle className="size-4" />

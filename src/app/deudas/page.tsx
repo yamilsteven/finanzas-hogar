@@ -24,8 +24,9 @@ import {
   buildAmortizationSchedule,
 } from "@/lib/amortization";
 import { formatMoney } from "@/lib/currency";
-import { periodKeyFromDate } from "@/lib/payCycle";
-import { matchesViewMode } from "@/lib/summary";
+import { currentPeriodKey, periodKeyFromDate } from "@/lib/payCycle";
+import { matchesDebtViewMode } from "@/lib/summary";
+import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import {
@@ -41,6 +42,7 @@ import {
   type RateType,
   type UserId,
 } from "@/types";
+import { Switch } from "@/components/ui/switch";
 
 const debtTypes: DebtType[] = [
   "Tarjeta",
@@ -52,7 +54,8 @@ const debtTypes: DebtType[] = [
 
 function emptyDebt(
   viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
-  displayCurrency: Currency = "COP"
+  displayCurrency: Currency = "COP",
+  defaultPaidBy?: UserId
 ): Omit<Debt, "id"> {
   return {
     name: "",
@@ -67,6 +70,9 @@ function emptyDebt(
     dueDate: new Date().toISOString().slice(0, 10),
     owner: defaultOwnerForView(viewMode),
     termMonths: 24,
+    autoPay: false,
+    autoPayPaidBy: defaultPaidBy,
+    lastInterestPeriod: currentPeriodKey(),
   };
 }
 
@@ -80,10 +86,14 @@ export default function DeudasPage() {
   const updateDebt = useFinanceStore((s) => s.updateDebt);
   const removeDebt = useFinanceStore((s) => s.removeDebt);
   const addExpense = useFinanceStore((s) => s.addExpense);
+  const { people } = useHouseholdPeople();
+  const defaultPaidBy = people[0]?.id ?? "Yamil";
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(() => emptyDebt(viewMode, displayCurrency));
+  const [form, setForm] = useState(() =>
+    emptyDebt(viewMode, displayCurrency, defaultPaidBy)
+  );
 
   const [amortOpen, setAmortOpen] = useState(false);
   const [amortDebt, setAmortDebt] = useState<Debt | null>(null);
@@ -102,7 +112,7 @@ export default function DeudasPage() {
   const visible = useMemo(
     () =>
       debts
-        .filter((d) => matchesViewMode(d, viewMode))
+        .filter((d) => matchesDebtViewMode(d, viewMode))
         .filter((d) => (ownerFilter === "all" ? true : d.owner === ownerFilter))
         .filter((d) => (typeFilter === "all" ? true : d.type === typeFilter)),
     [debts, viewMode, ownerFilter, typeFilter]
@@ -110,7 +120,7 @@ export default function DeudasPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyDebt(viewMode, displayCurrency));
+    setForm(emptyDebt(viewMode, displayCurrency, defaultPaidBy));
     setOpen(true);
   };
 
@@ -134,6 +144,10 @@ export default function DeudasPage() {
       owner: debt.owner,
       termMonths: debt.termMonths,
       notes: debt.notes,
+      autoPay: Boolean(debt.autoPay),
+      autoPayPaidBy: debt.autoPayPaidBy ?? defaultPaidBy,
+      lastInterestPeriod: debt.lastInterestPeriod,
+      lastAutoPayPeriod: debt.lastAutoPayPeriod,
     });
     setOpen(true);
   };
@@ -144,10 +158,18 @@ export default function DeudasPage() {
       return;
     }
     if (editingId) {
-      updateDebt(editingId, form);
+      updateDebt(editingId, {
+        ...form,
+        autoPay:
+          form.minPaymentMode === "variable" ? false : Boolean(form.autoPay),
+      });
       toast.success("Deuda actualizada");
     } else {
-      addDebt(form);
+      addDebt({
+        ...form,
+        autoPay:
+          form.minPaymentMode === "variable" ? false : Boolean(form.autoPay),
+      });
       toast.success("Deuda registrada");
     }
     setOpen(false);
@@ -176,7 +198,9 @@ export default function DeudasPage() {
     setPayDebt(debt);
     const mode = resolveMinPaymentMode(debt);
     setPayAmount(mode === "fixed" && debt.minPayment ? String(debt.minPayment) : "");
-    setPaidBy(viewMode === "Liz" ? "Liz" : "Yamil");
+    setPaidBy(
+      viewMode !== "Combined" ? viewMode : defaultPaidBy
+    );
     setPayAsExpense(true);
     setPayOpen(true);
   };
@@ -217,6 +241,7 @@ export default function DeudasPage() {
         date: today,
         status: "Pagado",
         periodKey: periodKeyFromDate(today),
+        debtId: payDebt.id,
       });
     }
 
@@ -290,8 +315,11 @@ export default function DeudasPage() {
               }
             >
               <option value="all">Todos</option>
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
               <option value="Shared">Shared</option>
             </NativeSelect>
           </Field>
@@ -377,6 +405,11 @@ export default function DeudasPage() {
                 <span className="text-muted-foreground">Próx. vencimiento</span>
                 <span>{d.dueDate}</span>
               </div>
+              {d.autoPay && resolveMinPaymentMode(d) === "fixed" && (
+                <p className="text-xs text-teal-700">
+                  Pago automático de cuota activo
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button size="sm" onClick={() => openPay(d)}>
                   <Banknote className="size-3.5" />
@@ -596,11 +629,64 @@ export default function DeudasPage() {
                 }))
               }
             >
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
               <option value="Shared">Shared</option>
             </NativeSelect>
           </Field>
+        </div>
+        <div className="rounded-lg border px-3 py-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Pago automático</p>
+              <p className="text-xs text-muted-foreground">
+                Cada mes aplica la cuota fija y baja el saldo (tras el interés).
+              </p>
+            </div>
+            <Switch
+              checked={Boolean(form.autoPay)}
+              disabled={form.minPaymentMode === "variable"}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({
+                  ...f,
+                  autoPay: checked,
+                  autoPayPaidBy:
+                    f.autoPayPaidBy ??
+                    (f.owner !== "Shared" ? f.owner : defaultPaidBy),
+                }))
+              }
+            />
+          </div>
+          {form.minPaymentMode === "variable" && (
+            <p className="text-xs text-amber-700">
+              Solo disponible con cuota fija (no tarjetas variables).
+            </p>
+          )}
+          {form.autoPay && form.minPaymentMode === "fixed" && (
+            <Field label="Pagado por (auto)">
+              <NativeSelect
+                value={
+                  form.autoPayPaidBy ??
+                  (form.owner !== "Shared" ? form.owner : defaultPaidBy)
+                }
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    autoPayPaidBy: e.target.value as UserId,
+                  }))
+                }
+              >
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          )}
         </div>
       </ResponsiveForm>
 
@@ -673,8 +759,11 @@ export default function DeudasPage() {
                     value={paidBy}
                     onChange={(e) => setPaidBy(e.target.value as UserId)}
                   >
-                    <option value="Yamil">Yamil</option>
-                    <option value="Liz">Liz</option>
+                    {people.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
                   </NativeSelect>
                 </Field>
               )}

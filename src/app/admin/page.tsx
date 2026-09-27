@@ -336,6 +336,7 @@ export default function AdminPage() {
                         expenseTemplates: [],
                         incomeTemplates: [],
                         dependents: [],
+                        insurances: [],
                       });
                       await hydrateFromCloud(selected.id, userId);
                     }
@@ -379,6 +380,11 @@ export default function AdminPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Invitar miembro</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Para agregar a la pareja u otro adulto: email + nombre + key
+                  (ej. <code className="text-[10px]">b</code>). Se copia un
+                  link; no se envía correo automático.
+                </p>
               </CardHeader>
               <CardContent>
                 <form onSubmit={onInvite} className="space-y-3">
@@ -388,6 +394,7 @@ export default function AdminPage() {
                       value={invEmail}
                       onChange={(e) => setInvEmail(e.target.value)}
                       required
+                      placeholder="pareja@email.com"
                     />
                   </Field>
                   <Field label="Nombre visible">
@@ -395,6 +402,7 @@ export default function AdminPage() {
                       value={invDisplay}
                       onChange={(e) => setInvDisplay(e.target.value)}
                       required
+                      placeholder="Liz"
                     />
                   </Field>
                   <div className="grid grid-cols-2 gap-3">
@@ -403,6 +411,7 @@ export default function AdminPage() {
                         value={invKey}
                         onChange={(e) => setInvKey(e.target.value)}
                         required
+                        placeholder="b"
                       />
                     </Field>
                     <Field label="Rol">

@@ -11,6 +11,7 @@ import type {
   ViewMode,
 } from "@/types";
 
+/** Ingresos/gastos/ahorros: vista personal incluye Shared. */
 export function matchesViewMode<T extends Ownable>(
   item: T,
   viewMode: ViewMode
@@ -20,9 +21,21 @@ export function matchesViewMode<T extends Ownable>(
 }
 
 /**
+ * Deudas: vista personal = solo individuales de esa persona.
+ * Hogar (Combined) = individuales de todos + compartidas.
+ */
+export function matchesDebtViewMode(
+  debt: Pick<Debt, "owner">,
+  viewMode: ViewMode
+): boolean {
+  if (viewMode === "Combined") return true;
+  return debt.owner === viewMode;
+}
+
+/**
  * Resumen de flujo del período (mes).
  * Ingresos y gastos = solo ese mes.
- * Deudas = saldo pendiente actual (stock, no flujo).
+ * Deudas / ahorros = saldo pendiente actual (stock, no flujo).
  */
 export function computeSummary(
   incomes: Income[],
@@ -40,7 +53,7 @@ export function computeSummary(
   const periodExpenses = filterByPeriodKey(expenses, periodKey).filter((e) =>
     matchesViewMode(e, viewMode)
   );
-  const filteredDebts = debts.filter((d) => matchesViewMode(d, viewMode));
+  const filteredDebts = debts.filter((d) => matchesDebtViewMode(d, viewMode));
   const filteredSavings = savings.filter((s) => matchesViewMode(s, viewMode));
 
   const totalIncome = periodIncomes.reduce(
@@ -57,6 +70,13 @@ export function computeSummary(
 
   const totalDebts = filteredDebts.reduce(
     (s, d) => s + toDisplayAmount(d.balance, d.currency, displayCurrency, trm),
+    0
+  );
+
+  const totalSavings = filteredSavings.reduce(
+    (s, sav) =>
+      s +
+      toDisplayAmount(sav.currentValue, sav.currency, displayCurrency, trm),
     0
   );
 
@@ -79,6 +99,7 @@ export function computeSummary(
     totalIncome,
     totalExpenses,
     totalDebts,
+    totalSavings,
     freeBalance,
     savingsCapacity,
   };

@@ -74,6 +74,7 @@ export function buildExpenseFromTemplate(
   periodKey: string,
   id: string
 ): Expense {
+  const autoDebit = Boolean(template.autoDebit) && !template.utilityService;
   return {
     id,
     description: template.description,
@@ -83,7 +84,7 @@ export function buildExpenseFromTemplate(
     paidBy: template.paidBy,
     owner: template.owner,
     date: dateInPeriod(periodKey, template.dayOfMonth),
-    status: "Pendiente",
+    status: autoDebit ? "Pagado" : "Pendiente",
     recurring: true,
     templateId: template.id,
     periodKey,
@@ -141,6 +142,50 @@ export function materializeMissing(
   }
 
   return { expenses: newExpenses, incomes: newIncomes };
+}
+
+/**
+ * Si una plantilla tiene débito automático y el mes ya tiene un Pendiente
+ * (creado antes de activar el flag), lo marca Pagado con el monto de la plantilla.
+ */
+export function applyAutoDebitToPending(
+  expenseTemplates: RecurringExpenseTemplate[],
+  expenses: Expense[],
+  periodKeys: string[]
+): { expenses: Expense[]; updated: Expense[] } {
+  const autoIds = new Set(
+    expenseTemplates
+      .filter((t) => t.active && t.autoDebit && !t.utilityService)
+      .map((t) => t.id)
+  );
+  if (autoIds.size === 0) return { expenses, updated: [] };
+
+  const keys = new Set(periodKeys);
+  const updated: Expense[] = [];
+  const next = expenses.map((e) => {
+    if (
+      e.status !== "Pendiente" ||
+      !e.templateId ||
+      !autoIds.has(e.templateId) ||
+      !e.periodKey ||
+      !keys.has(e.periodKey)
+    ) {
+      return e;
+    }
+    const tpl = expenseTemplates.find((t) => t.id === e.templateId);
+    if (!tpl) return e;
+    const patched: Expense = {
+      ...e,
+      status: "Pagado",
+      amount: tpl.amount > 0 ? tpl.amount : e.amount,
+      currency: tpl.currency,
+      paidBy: tpl.paidBy,
+    };
+    updated.push(patched);
+    return patched;
+  });
+
+  return { expenses: next, updated };
 }
 
 /** Materializar el mes actual (y el anterior por vencimientos cruzados). */
