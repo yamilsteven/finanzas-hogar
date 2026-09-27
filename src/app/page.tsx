@@ -263,14 +263,24 @@ export default function DashboardPage() {
                       />
                     </div>
                     <div className="flex justify-between text-sm">
-                      <Money amount={s.currentValue} currency={s.currency} />
+                      <Money
+                        amount={s.currentValue}
+                        currency={s.currency}
+                        as="native"
+                      />
                       <span className="text-muted-foreground">{pct}%</span>
                     </div>
                   </>
                 ) : (
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Saldo</span>
-                    <Money amount={s.currentValue} currency={s.currency} />
+                    <span className="text-muted-foreground">
+                      Saldo · {s.currency}
+                    </span>
+                    <Money
+                      amount={s.currentValue}
+                      currency={s.currency}
+                      as="native"
+                    />
                   </div>
                 )}
               </CardContent>

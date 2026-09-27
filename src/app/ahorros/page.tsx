@@ -13,8 +13,9 @@ import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
+import { Switch } from "@/components/ui/switch";
 import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
-import { formatMoney, toDisplayAmount } from "@/lib/currency";
+import { formatMoney } from "@/lib/currency";
 import { matchesViewMode } from "@/lib/summary";
 import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
@@ -44,7 +45,6 @@ function emptySaving(
 export default function AhorrosPage() {
   const viewMode = useSessionStore((s) => s.viewMode);
   const displayCurrency = useSessionStore((s) => s.displayCurrency);
-  const trm = useSessionStore((s) => s.trm);
   const isAdmin = useSessionStore((s) => s.isAdmin);
   const { people } = useHouseholdPeople();
 
@@ -59,21 +59,21 @@ export default function AhorrosPage() {
     emptySaving(viewMode, displayCurrency)
   );
   const [deleteSaving, setDeleteSaving] = useState<Saving | null>(null);
+  /** IDs de ahorros USD (u otra moneda) que se muestran convertidos a COP */
+  const [copViewIds, setCopViewIds] = useState<Record<string, boolean>>({});
+
   const visible = useMemo(
     () => savings.filter((s) => matchesViewMode(s, viewMode)),
     [savings, viewMode]
   );
 
-  const totalSavings = useMemo(
-    () =>
-      visible.reduce(
-        (sum, s) =>
-          sum +
-          toDisplayAmount(s.currentValue, s.currency, displayCurrency, trm),
-        0
-      ),
-    [visible, displayCurrency, trm]
-  );
+  const totalNativeByCurrency = useMemo(() => {
+    const map: Partial<Record<Currency, number>> = {};
+    for (const s of visible) {
+      map[s.currency] = (map[s.currency] ?? 0) + s.currentValue;
+    }
+    return map;
+  }, [visible]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -138,21 +138,34 @@ export default function AhorrosPage() {
       </div>
 
       {visible.length > 0 && (
-        <Card size="sm">
-          <CardContent className="flex items-center justify-between gap-3 px-4 py-3">
-            <div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Card size="sm">
+            <CardContent className="px-4 py-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Total ahorros
+                Total en pesos
               </p>
-              <p className="text-sm text-muted-foreground">
-                Suma de saldos en la vista actual
+              <p className="mt-1 text-xl font-semibold tabular-nums text-teal-700">
+                {formatMoney(totalNativeByCurrency.COP ?? 0, "COP")}
               </p>
-            </div>
-            <p className="text-xl font-semibold tabular-nums text-teal-700">
-              {formatMoney(totalSavings, displayCurrency)}
-            </p>
-          </CardContent>
-        </Card>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Suma de cuentas en COP
+              </p>
+            </CardContent>
+          </Card>
+          <Card size="sm">
+            <CardContent className="px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Total en dólares
+              </p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-teal-700">
+                {formatMoney(totalNativeByCurrency.USD ?? 0, "USD")}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Suma de cuentas en USD
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -172,13 +185,17 @@ export default function AhorrosPage() {
                   Math.round((s.currentValue / (s.targetValue as number)) * 100)
                 )
               : null;
+            const canConvert = s.currency !== "COP";
+            const showInCop = Boolean(copViewIds[s.id]);
+            const moneyAs = showInCop ? "COP" : "native";
             return (
               <Card key={s.id}>
                 <CardHeader className="flex-row items-start justify-between gap-2">
                   <div>
                     <CardTitle className="text-base">{s.name}</CardTitle>
                     <p className="text-[11px] text-muted-foreground">
-                      {withGoal ? "Con meta" : "Cuenta / saldo libre"}
+                      {withGoal ? "Con meta" : "Cuenta / saldo libre"} ·{" "}
+                      {s.currency}
                     </p>
                     {s.notes && (
                       <p className="text-xs text-muted-foreground">{s.notes}</p>
@@ -191,12 +208,17 @@ export default function AhorrosPage() {
                     <>
                       <Progress value={pct} />
                       <div className="flex justify-between text-sm">
-                        <Money amount={s.currentValue} currency={s.currency} />
+                        <Money
+                          amount={s.currentValue}
+                          currency={s.currency}
+                          as={moneyAs}
+                        />
                         <span className="text-muted-foreground">
                           Meta{" "}
                           <Money
                             amount={s.targetValue as number}
                             currency={s.currency}
+                            as={moneyAs}
                           />
                         </span>
                       </div>
@@ -205,6 +227,7 @@ export default function AhorrosPage() {
                         <Money
                           amount={s.monthlyContribution}
                           currency={s.currency}
+                          as={moneyAs}
                           className="font-medium text-foreground"
                         />{" "}
                         · {pct}%
@@ -217,6 +240,7 @@ export default function AhorrosPage() {
                         <Money
                           amount={s.currentValue}
                           currency={s.currency}
+                          as={moneyAs}
                           className="text-lg font-semibold"
                         />
                       </div>
@@ -226,11 +250,26 @@ export default function AhorrosPage() {
                           <Money
                             amount={s.monthlyContribution}
                             currency={s.currency}
+                            as={moneyAs}
                             className="font-medium text-foreground"
                           />
                         </p>
                       )}
                     </>
+                  )}
+                  {canConvert && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <Switch
+                        checked={showInCop}
+                        onCheckedChange={(checked) =>
+                          setCopViewIds((prev) => ({
+                            ...prev,
+                            [s.id]: checked,
+                          }))
+                        }
+                      />
+                      <span className="text-muted-foreground">Ver en COP</span>
+                    </label>
                   )}
                   <div className="flex gap-2">
                     <Button
