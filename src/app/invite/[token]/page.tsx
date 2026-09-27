@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,28 @@ export default function InviteAcceptPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
+  const autoTried = useRef(false);
+
+  const sessionEmail = (user?.email ?? "").trim().toLowerCase();
+  const inviteEmail = (invite?.email ?? "").trim().toLowerCase();
+  const emailMatches =
+    Boolean(sessionEmail) &&
+    Boolean(inviteEmail) &&
+    sessionEmail === inviteEmail;
+
+  const finishAccept = useCallback(async () => {
+    if (!token) return;
+    setAccepting(true);
+    const res = await acceptInvitation(token);
+    setAccepting(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    await refreshHousehold();
+    toast.success("Te uniste al hogar");
+    router.replace("/");
+  }, [token, refreshHousehold, router]);
 
   useEffect(() => {
     if (!ready || !session || !token) return;
@@ -50,19 +72,13 @@ export default function InviteAcceptPage() {
     };
   }, [ready, session, token]);
 
-  const onAccept = async () => {
-    if (!token) return;
-    setAccepting(true);
-    const res = await acceptInvitation(token);
-    setAccepting(false);
-    if (res.error) {
-      toast.error(res.error);
-      return;
-    }
-    await refreshHousehold();
-    toast.success("Te uniste al hogar");
-    router.replace("/");
-  };
+  // Si ya tiene sesión y el email coincide, aceptar solo
+  useEffect(() => {
+    if (loading || !invite || invite.status !== "pending") return;
+    if (!emailMatches || autoTried.current) return;
+    autoTried.current = true;
+    void finishAccept();
+  }, [loading, invite, emailMatches, finishAccept]);
 
   if (!ready) {
     return (
@@ -80,13 +96,15 @@ export default function InviteAcceptPage() {
             Invitación al hogar
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Acepta para unirte con tu cuenta actual
+            Crear cuenta no alcanza: hay que unirse al hogar con este link
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {loading ? (
+          {loading || accepting ? (
             <p className="text-sm text-muted-foreground">
-              Cargando invitación…
+              {accepting
+                ? "Uniéndote al hogar…"
+                : "Cargando invitación…"}
             </p>
           ) : error ? (
             <p className="text-sm text-destructive">{error}</p>
@@ -100,32 +118,60 @@ export default function InviteAcceptPage() {
                   </span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Para: </span>
+                  <span className="text-muted-foreground">Invitación para: </span>
                   {invite.email}
                 </p>
                 <p>
                   <span className="text-muted-foreground">Como: </span>
-                  {invite.display_name} ({invite.role} · key{" "}
-                  {invite.member_key})
+                  {invite.display_name} ({invite.role})
                 </p>
                 <p>
                   <span className="text-muted-foreground">Estado: </span>
-                  {invite.status}
+                  {invite.status === "pending"
+                    ? "Pendiente de aceptar"
+                    : invite.status === "accepted"
+                      ? "Ya aceptada"
+                      : invite.status}
                 </p>
                 {user?.email && (
                   <p className="text-xs text-muted-foreground">
-                    Sesión actual: {user.email}
+                    Tu sesión: {user.email}
                   </p>
                 )}
               </div>
-              {invite.status !== "pending" ? (
-                <p className="text-sm text-muted-foreground">
-                  Esta invitación ya no se puede aceptar.
+
+              {invite.status === "accepted" ? (
+                <p className="text-sm text-teal-700">
+                  Esta invitación ya fue aceptada. Puedes ir al inicio.
                 </p>
+              ) : invite.status !== "pending" ? (
+                <p className="text-sm text-muted-foreground">
+                  Esta invitación ya no se puede aceptar ({invite.status}).
+                </p>
+              ) : !emailMatches ? (
+                <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950">
+                  <p className="font-medium">El email no coincide</p>
+                  <p className="text-xs">
+                    La invitación es para <strong>{invite.email}</strong>
+                    {user?.email
+                      ? `, pero estás con ${user.email}.`
+                      : "."}{" "}
+                    Cierra sesión y crea/entra con ese correo exacto, o pide una
+                    nueva invitación.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => router.push("/login")}
+                  >
+                    Ir a login / crear cuenta
+                  </Button>
+                </div>
               ) : (
                 <Button
                   className="w-full"
-                  onClick={() => void onAccept()}
+                  onClick={() => void finishAccept()}
                   disabled={accepting}
                 >
                   {accepting ? "Aceptando…" : "Aceptar invitación"}

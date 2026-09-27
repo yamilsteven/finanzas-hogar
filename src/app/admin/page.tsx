@@ -487,6 +487,10 @@ export default function AdminPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Invitaciones</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                «pending» = creó cuenta pero aún no abrió el link y aceptó.
+                Cuando acepte, pasa a «accepted» y aparece en Miembros activos.
+              </p>
             </CardHeader>
             <CardContent className="space-y-2">
               {invites.length === 0 ? (
@@ -507,7 +511,12 @@ export default function AdminPage() {
                         </span>
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {inv.status} · key {inv.member_key} · {inv.role}
+                        {inv.status === "pending"
+                          ? "Pendiente de aceptar"
+                          : inv.status === "accepted"
+                            ? "Aceptada"
+                            : inv.status}{" "}
+                        · key {inv.member_key} · {inv.role}
                         {inv.status === "pending"
                           ? ` · vence ${inv.expires_at.slice(0, 10)}`
                           : ""}
