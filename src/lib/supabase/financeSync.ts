@@ -18,7 +18,9 @@ import type {
   RateType,
   RecurringExpenseTemplate,
   RecurringIncomeTemplate,
+  RentaDeclaration,
   Saving,
+  TaxPayment,
   UtilityService,
 } from "@/types";
 
@@ -31,6 +33,8 @@ export type HouseholdFinanceBundle = {
   incomeTemplates: RecurringIncomeTemplate[];
   dependents: Dependent[];
   insurances: Insurance[];
+  taxPayments: TaxPayment[];
+  rentaDeclarations: RentaDeclaration[];
 };
 
 export function newFinanceId(): string {
@@ -371,6 +375,70 @@ function insuranceToRow(
   };
 }
 
+function mapTaxPayment(row: Record<string, unknown>): TaxPayment {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    paidDate: String(row.paid_date ?? "").slice(0, 10),
+    taxYear: num(row.tax_year),
+    amount: row.amount == null ? undefined : num(row.amount),
+    currency: row.currency ? (row.currency as Currency) : undefined,
+    owner: row.owner_scope as Ownership,
+    notes: row.notes ? String(row.notes) : undefined,
+  };
+}
+
+function taxPaymentToRow(
+  householdId: string,
+  t: TaxPayment,
+  userId?: string
+) {
+  return {
+    id: t.id,
+    household_id: householdId,
+    name: t.name,
+    paid_date: t.paidDate,
+    tax_year: t.taxYear,
+    amount: t.amount ?? null,
+    currency: t.currency ?? null,
+    owner_scope: t.owner,
+    notes: t.notes ?? null,
+    updated_by: userId ?? null,
+    created_by: userId ?? null,
+  };
+}
+
+function mapRentaDeclaration(row: Record<string, unknown>): RentaDeclaration {
+  return {
+    id: String(row.id),
+    taxYear: num(row.tax_year),
+    declared: Boolean(row.declared),
+    declaredDate: row.declared_date
+      ? String(row.declared_date).slice(0, 10)
+      : undefined,
+    owner: row.owner_scope as Ownership,
+    notes: row.notes ? String(row.notes) : undefined,
+  };
+}
+
+function rentaDeclarationToRow(
+  householdId: string,
+  r: RentaDeclaration,
+  userId?: string
+) {
+  return {
+    id: r.id,
+    household_id: householdId,
+    tax_year: r.taxYear,
+    declared: r.declared,
+    declared_date: r.declaredDate ?? null,
+    owner_scope: r.owner,
+    notes: r.notes ?? null,
+    updated_by: userId ?? null,
+    created_by: userId ?? null,
+  };
+}
+
 export async function loadHouseholdFinance(
   householdId: string
 ): Promise<{ data?: HouseholdFinanceBundle; error?: string }> {
@@ -386,6 +454,8 @@ export async function loadHouseholdFinance(
     incomes,
     savings,
     insurances,
+    taxPayments,
+    rentaDeclarations,
   ] = await Promise.all([
     supabase.from("debts").select("*").eq("household_id", householdId),
     supabase
@@ -401,6 +471,11 @@ export async function loadHouseholdFinance(
     supabase.from("incomes").select("*").eq("household_id", householdId),
     supabase.from("savings").select("*").eq("household_id", householdId),
     supabase.from("insurances").select("*").eq("household_id", householdId),
+    supabase.from("tax_payments").select("*").eq("household_id", householdId),
+    supabase
+      .from("renta_declarations")
+      .select("*")
+      .eq("household_id", householdId),
   ]);
 
   const firstError =
@@ -414,8 +489,12 @@ export async function loadHouseholdFinance(
 
   if (firstError) return { error: firstError.message };
 
-  // insurances puede faltar hasta correr migración 005
+  // Tablas nuevas pueden faltar hasta correr migraciones 005/010
   const insuranceRows = insurances.error ? [] : (insurances.data ?? []);
+  const taxPaymentRows = taxPayments.error ? [] : (taxPayments.data ?? []);
+  const rentaRows = rentaDeclarations.error
+    ? []
+    : (rentaDeclarations.data ?? []);
 
   return {
     data: {
@@ -441,6 +520,12 @@ export async function loadHouseholdFinance(
       insurances: insuranceRows.map((r) =>
         mapInsurance(r as Record<string, unknown>)
       ),
+      taxPayments: taxPaymentRows.map((r) =>
+        mapTaxPayment(r as Record<string, unknown>)
+      ),
+      rentaDeclarations: rentaRows.map((r) =>
+        mapRentaDeclaration(r as Record<string, unknown>)
+      ),
     },
   };
 }
@@ -453,7 +538,9 @@ type TableName =
   | "expense_templates"
   | "income_templates"
   | "dependents"
-  | "insurances";
+  | "insurances"
+  | "tax_payments"
+  | "renta_declarations";
 
 async function upsertRow(
   table: TableName,
@@ -540,6 +627,33 @@ export async function syncDeleteInsurance(id: string) {
   return deleteRow("insurances", id);
 }
 
+export async function syncUpsertTaxPayment(
+  householdId: string,
+  tax: TaxPayment,
+  userId?: string
+) {
+  return upsertRow("tax_payments", taxPaymentToRow(householdId, tax, userId));
+}
+
+export async function syncDeleteTaxPayment(id: string) {
+  return deleteRow("tax_payments", id);
+}
+
+export async function syncUpsertRentaDeclaration(
+  householdId: string,
+  renta: RentaDeclaration,
+  userId?: string
+) {
+  return upsertRow(
+    "renta_declarations",
+    rentaDeclarationToRow(householdId, renta, userId)
+  );
+}
+
+export async function syncDeleteRentaDeclaration(id: string) {
+  return deleteRow("renta_declarations", id);
+}
+
 export async function syncUpsertExpenseTemplate(
   householdId: string,
   t: RecurringExpenseTemplate,
@@ -594,6 +708,8 @@ export async function clearHouseholdFinance(
     "incomes",
     "savings",
     "insurances",
+    "tax_payments",
+    "renta_declarations",
     "expense_templates",
     "income_templates",
     "dependents",
@@ -655,6 +771,18 @@ export async function pushHouseholdFinance(
       table: "insurances",
       rows: (bundle.insurances ?? []).map((ins) =>
         insuranceToRow(householdId, ins, userId)
+      ),
+    },
+    {
+      table: "tax_payments",
+      rows: (bundle.taxPayments ?? []).map((t) =>
+        taxPaymentToRow(householdId, t, userId)
+      ),
+    },
+    {
+      table: "renta_declarations",
+      rows: (bundle.rentaDeclarations ?? []).map((r) =>
+        rentaDeclarationToRow(householdId, r, userId)
       ),
     },
   ];

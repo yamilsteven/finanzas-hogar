@@ -62,6 +62,8 @@ export function FinanceSyncBootstrap() {
       "incomes",
       "savings",
       "insurances",
+      "tax_payments",
+      "renta_declarations",
       "expense_templates",
       "income_templates",
       "dependents",

@@ -30,6 +30,8 @@ import {
   syncDeleteIncomeTemplate,
   syncDeleteInsurance,
   syncDeleteSaving,
+  syncDeleteTaxPayment,
+  syncDeleteRentaDeclaration,
   syncUpsertDebt,
   syncUpsertDependent,
   syncUpsertExpense,
@@ -38,6 +40,8 @@ import {
   syncUpsertIncomeTemplate,
   syncUpsertInsurance,
   syncUpsertSaving,
+  syncUpsertTaxPayment,
+  syncUpsertRentaDeclaration,
   type HouseholdFinanceBundle,
 } from "@/lib/supabase/financeSync";
 import type {
@@ -48,7 +52,9 @@ import type {
   Insurance,
   RecurringExpenseTemplate,
   RecurringIncomeTemplate,
+  RentaDeclaration,
   Saving,
+  TaxPayment,
 } from "@/types";
 
 export type FinanceSyncStatus =
@@ -68,6 +74,8 @@ interface FinanceState {
   incomeTemplates: RecurringIncomeTemplate[];
   dependents: Dependent[];
   insurances: Insurance[];
+  taxPayments: TaxPayment[];
+  rentaDeclarations: RentaDeclaration[];
   /** Hogar cloud activo; null = solo local */
   syncHouseholdId: string | null;
   syncUserId: string | null;
@@ -90,6 +98,15 @@ interface FinanceState {
   addInsurance: (insurance: Omit<Insurance, "id">) => void;
   updateInsurance: (id: string, patch: Partial<Insurance>) => void;
   removeInsurance: (id: string) => void;
+  addTaxPayment: (tax: Omit<TaxPayment, "id">) => void;
+  updateTaxPayment: (id: string, patch: Partial<TaxPayment>) => void;
+  removeTaxPayment: (id: string) => void;
+  addRentaDeclaration: (renta: Omit<RentaDeclaration, "id">) => void;
+  updateRentaDeclaration: (
+    id: string,
+    patch: Partial<RentaDeclaration>
+  ) => void;
+  removeRentaDeclaration: (id: string) => void;
   addExpenseTemplate: (t: Omit<RecurringExpenseTemplate, "id">) => void;
   updateExpenseTemplate: (
     id: string,
@@ -126,6 +143,8 @@ function emptyBundle(): HouseholdFinanceBundle {
     incomeTemplates: [],
     dependents: [],
     insurances: [],
+    taxPayments: [],
+    rentaDeclarations: [],
   };
 }
 
@@ -388,6 +407,76 @@ export const useFinanceStore = create<FinanceState>()(
         withCloud(get, set, () => syncDeleteInsurance(id));
       },
 
+      addTaxPayment: (tax) => {
+        const row = { ...tax, id: newFinanceId() };
+        set((s) => ({ taxPayments: [...s.taxPayments, row] }));
+        withCloud(get, set, () =>
+          syncUpsertTaxPayment(
+            get().syncHouseholdId!,
+            row,
+            get().syncUserId ?? undefined
+          )
+        );
+      },
+      updateTaxPayment: (id, patch) => {
+        set((s) => ({
+          taxPayments: s.taxPayments.map((t) =>
+            t.id === id ? { ...t, ...patch } : t
+          ),
+        }));
+        const row = get().taxPayments.find((t) => t.id === id);
+        if (!row) return;
+        withCloud(get, set, () =>
+          syncUpsertTaxPayment(
+            get().syncHouseholdId!,
+            row,
+            get().syncUserId ?? undefined
+          )
+        );
+      },
+      removeTaxPayment: (id) => {
+        set((s) => ({
+          taxPayments: s.taxPayments.filter((t) => t.id !== id),
+        }));
+        withCloud(get, set, () => syncDeleteTaxPayment(id));
+      },
+
+      addRentaDeclaration: (renta) => {
+        const row = { ...renta, id: newFinanceId() };
+        set((s) => ({
+          rentaDeclarations: [...s.rentaDeclarations, row],
+        }));
+        withCloud(get, set, () =>
+          syncUpsertRentaDeclaration(
+            get().syncHouseholdId!,
+            row,
+            get().syncUserId ?? undefined
+          )
+        );
+      },
+      updateRentaDeclaration: (id, patch) => {
+        set((s) => ({
+          rentaDeclarations: s.rentaDeclarations.map((r) =>
+            r.id === id ? { ...r, ...patch } : r
+          ),
+        }));
+        const row = get().rentaDeclarations.find((r) => r.id === id);
+        if (!row) return;
+        withCloud(get, set, () =>
+          syncUpsertRentaDeclaration(
+            get().syncHouseholdId!,
+            row,
+            get().syncUserId ?? undefined
+          )
+        );
+      },
+      removeRentaDeclaration: (id) => {
+        set((s) => ({
+          rentaDeclarations: s.rentaDeclarations.filter((r) => r.id !== id),
+        }));
+        withCloud(get, set, () => syncDeleteRentaDeclaration(id));
+      },
+
       addExpenseTemplate: (t) => {
         const row = {
           ...t,
@@ -627,6 +716,8 @@ export const useFinanceStore = create<FinanceState>()(
           incomeTemplates,
           dependents: [],
           insurances: [],
+          taxPayments: [],
+          rentaDeclarations: [],
         });
 
         if (!householdId) return;
@@ -644,6 +735,8 @@ export const useFinanceStore = create<FinanceState>()(
               incomeTemplates,
               dependents: [],
               insurances: [],
+              taxPayments: [],
+              rentaDeclarations: [],
             },
             userId
           );
@@ -669,7 +762,7 @@ export const useFinanceStore = create<FinanceState>()(
     }),
     {
       name: "finanzas-data",
-      version: 8,
+      version: 9,
       partialize: (state) => ({
         // Cache local; la fuente de verdad en cloud es Supabase al hidratar
         debts: state.debts,
@@ -680,6 +773,8 @@ export const useFinanceStore = create<FinanceState>()(
         incomeTemplates: state.incomeTemplates,
         dependents: state.dependents,
         insurances: state.insurances,
+        taxPayments: state.taxPayments,
+        rentaDeclarations: state.rentaDeclarations,
       }),
       migrate: (persisted, fromVersion) => {
         const p = persisted as Partial<FinanceState>;
@@ -710,6 +805,8 @@ export const useFinanceStore = create<FinanceState>()(
           incomeTemplates: p.incomeTemplates ?? [],
           dependents: p.dependents ?? [],
           insurances: p.insurances ?? [],
+          taxPayments: p.taxPayments ?? [],
+          rentaDeclarations: p.rentaDeclarations ?? [],
         };
       },
     }

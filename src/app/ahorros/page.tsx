@@ -12,6 +12,10 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
+import {
+  OwnerSelect,
+  resolveDefaultOwner,
+} from "@/components/shared/OwnerSelect";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
 import { Switch } from "@/components/ui/switch";
 import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
@@ -21,16 +25,19 @@ import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import {
   canEdit,
-  defaultOwnerForView,
   hasSavingGoal,
   type Currency,
   type Ownership,
   type Saving,
+  type UserId,
+  type ViewMode,
 } from "@/types";
 
 function emptySaving(
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
-  displayCurrency: Currency = "COP"
+  viewMode: ViewMode,
+  displayCurrency: Currency = "COP",
+  people: { id: UserId }[] = [],
+  isMultiPerson = false
 ): Omit<Saving, "id"> {
   return {
     name: "",
@@ -38,7 +45,7 @@ function emptySaving(
     targetValue: 0,
     monthlyContribution: 0,
     currency: displayCurrency,
-    owner: defaultOwnerForView(viewMode),
+    owner: resolveDefaultOwner(viewMode, people, isMultiPerson),
   };
 }
 
@@ -46,7 +53,7 @@ export default function AhorrosPage() {
   const viewMode = useSessionStore((s) => s.viewMode);
   const displayCurrency = useSessionStore((s) => s.displayCurrency);
   const isAdmin = useSessionStore((s) => s.isAdmin);
-  const { people } = useHouseholdPeople();
+  const { people, isMultiPerson } = useHouseholdPeople();
 
   const savings = useFinanceStore((s) => s.savings);
   const addSaving = useFinanceStore((s) => s.addSaving);
@@ -56,7 +63,7 @@ export default function AhorrosPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(() =>
-    emptySaving(viewMode, displayCurrency)
+    emptySaving(viewMode, displayCurrency, people, isMultiPerson)
   );
   const [deleteSaving, setDeleteSaving] = useState<Saving | null>(null);
   /** IDs de ahorros USD (u otra moneda) que se muestran convertidos a COP */
@@ -77,7 +84,7 @@ export default function AhorrosPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptySaving(viewMode, displayCurrency));
+    setForm(emptySaving(viewMode, displayCurrency, people, isMultiPerson));
     setOpen(true);
   };
 
@@ -385,22 +392,12 @@ export default function AhorrosPage() {
           </Field>
         </div>
         <Field label="Owner">
-          <NativeSelect
+          <OwnerSelect
             value={form.owner}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                owner: e.target.value as Ownership,
-              }))
+            onChange={(v) =>
+              setForm((f) => ({ ...f, owner: v as Ownership }))
             }
-          >
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-            <option value="Shared">Shared</option>
-          </NativeSelect>
+          />
         </Field>
         <Field label="Notas">
           <Input

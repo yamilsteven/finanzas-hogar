@@ -14,7 +14,12 @@ import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { MonthNavigator } from "@/components/shared/MonthNavigator";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
+import {
+  OwnerSelect,
+  resolveDefaultOwner,
+} from "@/components/shared/OwnerSelect";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
+import { useHouseholdPeople } from "@/hooks/useHouseholdPeople";
 import { formatMoney, toDisplayAmount } from "@/lib/currency";
 import {
   currentPeriodKey,
@@ -31,18 +36,20 @@ import {
   type IncomeType,
   type Ownership,
   type RecurringIncomeTemplate,
+  type UserId,
+  type ViewMode,
 } from "@/types";
 
 function emptyIncome(
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
+  viewMode: ViewMode,
   periodKey: string,
-  displayCurrency: Currency = "COP"
+  displayCurrency: Currency,
+  people: { id: UserId }[],
+  isMultiPerson: boolean
 ): Omit<Income, "id"> {
-  const owner: Ownership =
-    viewMode === "Combined" ? "Shared" : viewMode;
   return {
     source: "",
-    owner,
+    owner: resolveDefaultOwner(viewMode, people, isMultiPerson),
     currency: displayCurrency,
     amount: 0,
     type: "Fijo",
@@ -52,13 +59,13 @@ function emptyIncome(
 }
 
 function emptyTemplate(
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"]
+  viewMode: ViewMode,
+  people: { id: UserId }[],
+  isMultiPerson: boolean
 ): Omit<RecurringIncomeTemplate, "id"> {
-  const owner: Ownership =
-    viewMode === "Combined" ? "Shared" : viewMode;
   return {
     source: "",
-    owner,
+    owner: resolveDefaultOwner(viewMode, people, isMultiPerson),
     currency: "COP",
     amount: 0,
     type: "Fijo",
@@ -72,6 +79,7 @@ export default function IngresosPage() {
   const displayCurrency = useSessionStore((s) => s.displayCurrency);
   const trm = useSessionStore((s) => s.trm);
   const isAdmin = useSessionStore((s) => s.isAdmin);
+  const { people, isMultiPerson } = useHouseholdPeople();
 
   const incomes = useFinanceStore((s) => s.incomes);
   const incomeTemplates = useFinanceStore((s) => s.incomeTemplates);
@@ -89,12 +97,14 @@ export default function IngresosPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(() =>
-    emptyIncome(viewMode, periodKey, displayCurrency)
+    emptyIncome(viewMode, periodKey, displayCurrency, people, isMultiPerson)
   );
 
   const [tplOpen, setTplOpen] = useState(false);
   const [tplEditingId, setTplEditingId] = useState<string | null>(null);
-  const [tplForm, setTplForm] = useState(() => emptyTemplate(viewMode));
+  const [tplForm, setTplForm] = useState(() =>
+    emptyTemplate(viewMode, people, isMultiPerson)
+  );
   const [deleteTarget, setDeleteTarget] = useState<
     | { kind: "income"; item: Income }
     | { kind: "template"; item: RecurringIncomeTemplate }
@@ -124,7 +134,7 @@ export default function IngresosPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyIncome(viewMode, periodKey, displayCurrency));
+    setForm(emptyIncome(viewMode, periodKey, displayCurrency, people, isMultiPerson));
     setOpen(true);
   };
 
@@ -300,7 +310,7 @@ export default function IngresosPage() {
               size="sm"
               onClick={() => {
                 setTplEditingId(null);
-                setTplForm(emptyTemplate(viewMode));
+                setTplForm(emptyTemplate(viewMode, people, isMultiPerson));
                 setTplOpen(true);
               }}
             >
@@ -316,7 +326,7 @@ export default function IngresosPage() {
                 label: "Crear plantilla",
                 onClick: () => {
                   setTplEditingId(null);
-                  setTplForm(emptyTemplate(viewMode));
+                  setTplForm(emptyTemplate(viewMode, people, isMultiPerson));
                   setTplOpen(true);
                 },
               }}
@@ -417,20 +427,12 @@ export default function IngresosPage() {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Owner">
-            <NativeSelect
+            <OwnerSelect
               value={form.owner}
-              onChange={(e) => {
-                const owner = e.target.value as Ownership;
-                setForm((f) => ({
-                  ...f,
-                  owner,
-                }));
-              }}
-            >
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
-              <option value="Shared">Shared (hogar)</option>
-            </NativeSelect>
+              onChange={(v) =>
+                setForm((f) => ({ ...f, owner: v as Ownership }))
+              }
+            />
           </Field>
           <Field label="Tipo">
             <NativeSelect
@@ -522,19 +524,12 @@ export default function IngresosPage() {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Owner">
-            <NativeSelect
+            <OwnerSelect
               value={tplForm.owner}
-              onChange={(e) =>
-                setTplForm((f) => ({
-                  ...f,
-                  owner: e.target.value as Ownership,
-                }))
+              onChange={(v) =>
+                setTplForm((f) => ({ ...f, owner: v as Ownership }))
               }
-            >
-              <option value="Yamil">Yamil</option>
-              <option value="Liz">Liz</option>
-              <option value="Shared">Shared (hogar)</option>
-            </NativeSelect>
+            />
           </Field>
           <Field label="Día del mes (31 = último)">
             <Input

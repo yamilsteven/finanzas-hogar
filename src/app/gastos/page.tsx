@@ -17,6 +17,12 @@ import { Money } from "@/components/shared/Money";
 import { MonthNavigator } from "@/components/shared/MonthNavigator";
 import { MonthlyReportButton } from "@/components/shared/MonthlyReportButton";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
+import {
+  OwnerSelect,
+  PaidBySelect,
+  resolveDefaultOwner,
+  resolveDefaultPaidBy,
+} from "@/components/shared/OwnerSelect";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
 import { UtilityConsumptionPanel } from "@/components/shared/UtilityConsumptionPanel";
 import { formatMoney, toDisplayAmount } from "@/lib/currency";
@@ -33,7 +39,6 @@ import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import {
   canEdit,
-  defaultOwnerForView,
   resolveMinPaymentMode,
   UTILITY_META,
   UTILITY_SERVICES,
@@ -44,6 +49,7 @@ import {
   type RecurringExpenseTemplate,
   type UserId,
   type UtilityService,
+  type ViewMode,
 } from "@/types";
 
 type PaymentKind = "libre" | "deuda" | "recurrente" | "recibo";
@@ -62,16 +68,17 @@ const categories: ExpenseCategory[] = [
 ];
 
 const emptyForm = (
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
+  viewMode: ViewMode,
   periodKey: string,
-  defaultPaidBy: UserId
+  people: { id: UserId }[],
+  isMultiPerson: boolean
 ): Omit<Expense, "id"> => ({
   description: "",
   category: "Mercado",
   amount: 0,
   currency: "COP",
-  paidBy: viewMode === "Combined" ? defaultPaidBy : (viewMode as UserId),
-  owner: defaultOwnerForView(viewMode),
+  paidBy: resolveDefaultPaidBy(viewMode, people),
+  owner: resolveDefaultOwner(viewMode, people, isMultiPerson),
   date: `${periodKey}-15`,
   status: "Pendiente",
   recurring: false,
@@ -79,15 +86,16 @@ const emptyForm = (
 });
 
 const emptyTemplate = (
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
-  defaultPaidBy: UserId
+  viewMode: ViewMode,
+  people: { id: UserId }[],
+  isMultiPerson: boolean
 ): Omit<RecurringExpenseTemplate, "id"> => ({
   description: "",
   category: "Suscripciones",
   amount: 0,
   currency: "COP",
-  paidBy: viewMode === "Combined" ? defaultPaidBy : (viewMode as UserId),
-  owner: defaultOwnerForView(viewMode),
+  paidBy: resolveDefaultPaidBy(viewMode, people),
+  owner: resolveDefaultOwner(viewMode, people, isMultiPerson),
   dayOfMonth: 1,
   active: true,
   utilityService: undefined,
@@ -127,9 +135,8 @@ export default function GastosPage() {
   );
 
   const { people, isMultiPerson } = useHouseholdPeople();
-  const personA = people[0]?.id ?? "Yamil";
-  const personB = people[1]?.id ?? "Liz";
-  const defaultPaidBy = personA;
+  const personA = people[0]?.id ?? "";
+  const personB = people[1]?.id ?? people[0]?.id ?? "";
 
   const [periodKey, setPeriodKey] = useState(currentPeriodKey);
   const [paidByFilter, setPaidByFilter] = useState<"all" | UserId>("all");
@@ -147,14 +154,18 @@ export default function GastosPage() {
   const [formReadOnly, setFormReadOnly] = useState(false);
   const [mainTab, setMainTab] = useState("obligaciones");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(() => emptyForm(viewMode, periodKey, defaultPaidBy));
+  const [form, setForm] = useState(() =>
+    emptyForm(viewMode, periodKey, people, isMultiPerson)
+  );
   const [paymentKind, setPaymentKind] = useState<PaymentKind>("libre");
   const [selectedDebtId, setSelectedDebtId] = useState("");
   const [selectedRecurringId, setSelectedRecurringId] = useState("");
 
   const [tplOpen, setTplOpen] = useState(false);
   const [tplEditingId, setTplEditingId] = useState<string | null>(null);
-  const [tplForm, setTplForm] = useState(() => emptyTemplate(viewMode, defaultPaidBy));
+  const [tplForm, setTplForm] = useState(() =>
+    emptyTemplate(viewMode, people, isMultiPerson)
+  );
   const [deleteTarget, setDeleteTarget] = useState<
     | { kind: "expense"; item: Expense }
     | { kind: "template"; item: RecurringExpenseTemplate }
@@ -382,7 +393,7 @@ export default function GastosPage() {
     setSelectedDebtId("");
     setSelectedRecurringId("");
     setForm({
-      ...emptyForm(viewMode, periodKey, defaultPaidBy),
+      ...emptyForm(viewMode, periodKey, people, isMultiPerson),
       date: new Date().toISOString().slice(0, 10),
       status: "Pagado",
     });
@@ -786,35 +797,18 @@ export default function GastosPage() {
       <Card size="sm">
         <CardContent className="flex flex-wrap items-end gap-2 px-3 py-3">
           <Field label="Pagó" className="min-w-[110px] flex-1">
-            <NativeSelect
+            <PaidBySelect
+              includeAll
               value={paidByFilter}
-              onChange={(e) =>
-                setPaidByFilter(e.target.value as "all" | UserId)
-              }
-            >
-              <option value="all">Todos</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={(v) => setPaidByFilter(v)}
+            />
           </Field>
           <Field label="Owner" className="min-w-[110px] flex-1">
-            <NativeSelect
+            <OwnerSelect
+              includeAll
               value={ownerFilter}
-              onChange={(e) =>
-                setOwnerFilter(e.target.value as "all" | Ownership)
-              }
-            >
-              <option value="all">Todos</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-              <option value="Shared">Shared</option>
-            </NativeSelect>
+              onChange={(v) => setOwnerFilter(v as "all" | Ownership)}
+            />
           </Field>
           <Field label="Estado" className="min-w-[110px] flex-1">
             <NativeSelect
@@ -1148,7 +1142,7 @@ export default function GastosPage() {
               size="sm"
               onClick={() => {
                 setTplEditingId(null);
-                setTplForm(emptyTemplate(viewMode, defaultPaidBy));
+                setTplForm(emptyTemplate(viewMode, people, isMultiPerson));
                 setTplOpen(true);
               }}
             >
@@ -1164,7 +1158,7 @@ export default function GastosPage() {
                 label: "Crear primera plantilla",
                 onClick: () => {
                   setTplEditingId(null);
-                  setTplForm(emptyTemplate(viewMode, defaultPaidBy));
+                  setTplForm(emptyTemplate(viewMode, people, isMultiPerson));
                   setTplOpen(true);
                 },
               }}
@@ -1319,7 +1313,7 @@ export default function GastosPage() {
                 setSelectedDebtId("");
                 setSelectedRecurringId("");
                 setForm({
-                  ...emptyForm(viewMode, periodKey, defaultPaidBy),
+                  ...emptyForm(viewMode, periodKey, people, isMultiPerson),
                   date: new Date().toISOString().slice(0, 10),
                   status: "Pagado",
                   amount: 0,
@@ -1572,39 +1566,20 @@ export default function GastosPage() {
           })()}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Pagado por">
-            <NativeSelect
+            <PaidBySelect
               value={form.paidBy}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  paidBy: e.target.value as UserId,
-                }))
+              onChange={(v) =>
+                setForm((f) => ({ ...f, paidBy: v as UserId }))
               }
-            >
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </NativeSelect>
+            />
           </Field>
           <Field label="Owner">
-            <NativeSelect
+            <OwnerSelect
               value={form.owner}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  owner: e.target.value as Ownership,
-                }))
+              onChange={(v) =>
+                setForm((f) => ({ ...f, owner: v as Ownership }))
               }
-            >
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-              <option value="Shared">Shared</option>
-            </NativeSelect>
+            />
           </Field>
         </div>
         <Field label="Beneficiario (opcional)">
@@ -1784,39 +1759,20 @@ export default function GastosPage() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Pagado por">
-            <NativeSelect
+            <PaidBySelect
               value={tplForm.paidBy}
-              onChange={(e) =>
-                setTplForm((f) => ({
-                  ...f,
-                  paidBy: e.target.value as UserId,
-                }))
+              onChange={(v) =>
+                setTplForm((f) => ({ ...f, paidBy: v as UserId }))
               }
-            >
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </NativeSelect>
+            />
           </Field>
           <Field label="Owner">
-            <NativeSelect
+            <OwnerSelect
               value={tplForm.owner}
-              onChange={(e) =>
-                setTplForm((f) => ({
-                  ...f,
-                  owner: e.target.value as Ownership,
-                }))
+              onChange={(v) =>
+                setTplForm((f) => ({ ...f, owner: v as Ownership }))
               }
-            >
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-              <option value="Shared">Shared</option>
-            </NativeSelect>
+            />
           </Field>
         </div>
         <Field label="Beneficiario (opcional)">

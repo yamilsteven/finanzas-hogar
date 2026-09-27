@@ -110,6 +110,33 @@ export interface Insurance {
   notes?: string;
 }
 
+/** Pago anual de impuestos (listado; no afecta flujo de caja) */
+export interface TaxPayment {
+  id: string;
+  name: string;
+  /** Fecha en que se pagó */
+  paidDate: string;
+  /** Año fiscal del impuesto */
+  taxYear: number;
+  /** Monto informativo (opcional) */
+  amount?: number;
+  currency?: Currency;
+  owner: Ownership;
+  notes?: string;
+}
+
+/** Declaración de renta (listado; no afecta finanzas) */
+export interface RentaDeclaration {
+  id: string;
+  /** Año fiscal */
+  taxYear: number;
+  declared: boolean;
+  /** Fecha en que se declaró (si aplica) */
+  declaredDate?: string;
+  owner: Ownership;
+  notes?: string;
+}
+
 export interface Expense {
   id: string;
   description: string;

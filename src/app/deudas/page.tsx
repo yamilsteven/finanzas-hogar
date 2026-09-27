@@ -18,6 +18,12 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Field, NativeSelect } from "@/components/shared/Field";
 import { Money } from "@/components/shared/Money";
 import { OwnerBadge } from "@/components/shared/OwnerBadge";
+import {
+  OwnerSelect,
+  PaidBySelect,
+  resolveDefaultOwner,
+  resolveDefaultPaidBy,
+} from "@/components/shared/OwnerSelect";
 import { ResponsiveForm } from "@/components/shared/ResponsiveForm";
 import {
   applyExtraordinaryPayment,
@@ -31,7 +37,6 @@ import { useFinanceStore } from "@/store/financeStore";
 import { useSessionStore } from "@/store/sessionStore";
 import {
   canEdit,
-  defaultOwnerForView,
   resolveMinPaymentMode,
   type AmortizationRow,
   type Currency,
@@ -41,6 +46,7 @@ import {
   type Ownership,
   type RateType,
   type UserId,
+  type ViewMode,
 } from "@/types";
 import { Switch } from "@/components/ui/switch";
 
@@ -53,10 +59,12 @@ const debtTypes: DebtType[] = [
 ];
 
 function emptyDebt(
-  viewMode: ReturnType<typeof useSessionStore.getState>["viewMode"],
+  viewMode: ViewMode,
   displayCurrency: Currency = "COP",
-  defaultPaidBy?: UserId
+  people: { id: UserId }[] = [],
+  isMultiPerson = false
 ): Omit<Debt, "id"> {
+  const defaultPaidBy = resolveDefaultPaidBy(viewMode, people);
   return {
     name: "",
     entity: "",
@@ -68,10 +76,10 @@ function emptyDebt(
     minPayment: 0,
     minPaymentMode: "fixed",
     dueDate: new Date().toISOString().slice(0, 10),
-    owner: defaultOwnerForView(viewMode),
+    owner: resolveDefaultOwner(viewMode, people, isMultiPerson),
     termMonths: 24,
     autoPay: false,
-    autoPayPaidBy: defaultPaidBy,
+    autoPayPaidBy: defaultPaidBy || undefined,
     lastInterestPeriod: currentPeriodKey(),
   };
 }
@@ -86,13 +94,13 @@ export default function DeudasPage() {
   const updateDebt = useFinanceStore((s) => s.updateDebt);
   const removeDebt = useFinanceStore((s) => s.removeDebt);
   const addExpense = useFinanceStore((s) => s.addExpense);
-  const { people } = useHouseholdPeople();
-  const defaultPaidBy = people[0]?.id ?? "Yamil";
+  const { people, isMultiPerson } = useHouseholdPeople();
+  const defaultPaidBy = resolveDefaultPaidBy(viewMode, people);
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(() =>
-    emptyDebt(viewMode, displayCurrency, defaultPaidBy)
+    emptyDebt(viewMode, displayCurrency, people, isMultiPerson)
   );
 
   const [amortOpen, setAmortOpen] = useState(false);
@@ -104,7 +112,7 @@ export default function DeudasPage() {
   const [payDebt, setPayDebt] = useState<Debt | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [payAsExpense, setPayAsExpense] = useState(true);
-  const [paidBy, setPaidBy] = useState<UserId>("Yamil");
+  const [paidBy, setPaidBy] = useState<UserId>(() => defaultPaidBy);
   const [ownerFilter, setOwnerFilter] = useState<"all" | Ownership>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | DebtType>("all");
   const [deleteDebt, setDeleteDebt] = useState<Debt | null>(null);
@@ -120,7 +128,7 @@ export default function DeudasPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyDebt(viewMode, displayCurrency, defaultPaidBy));
+    setForm(emptyDebt(viewMode, displayCurrency, people, isMultiPerson));
     setOpen(true);
   };
 
@@ -308,20 +316,11 @@ export default function DeudasPage() {
       <Card size="sm">
         <CardContent className="flex flex-wrap items-end gap-2 px-3 py-3">
           <Field label="Owner" className="min-w-[120px] flex-1">
-            <NativeSelect
+            <OwnerSelect
+              includeAll
               value={ownerFilter}
-              onChange={(e) =>
-                setOwnerFilter(e.target.value as "all" | Ownership)
-              }
-            >
-              <option value="all">Todos</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-              <option value="Shared">Shared</option>
-            </NativeSelect>
+              onChange={(v) => setOwnerFilter(v as "all" | Ownership)}
+            />
           </Field>
           <Field label="Tipo" className="min-w-[140px] flex-1">
             <NativeSelect
@@ -620,22 +619,12 @@ export default function DeudasPage() {
             />
           </Field>
           <Field label="Owner">
-            <NativeSelect
+            <OwnerSelect
               value={form.owner}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  owner: e.target.value as Ownership,
-                }))
+              onChange={(v) =>
+                setForm((f) => ({ ...f, owner: v as Ownership }))
               }
-            >
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-              <option value="Shared">Shared</option>
-            </NativeSelect>
+            />
           </Field>
         </div>
         <div className="rounded-lg border px-3 py-3 space-y-2">
@@ -667,24 +656,18 @@ export default function DeudasPage() {
           )}
           {form.autoPay && form.minPaymentMode === "fixed" && (
             <Field label="Pagado por (auto)">
-              <NativeSelect
+              <PaidBySelect
                 value={
                   form.autoPayPaidBy ??
                   (form.owner !== "Shared" ? form.owner : defaultPaidBy)
                 }
-                onChange={(e) =>
+                onChange={(v) =>
                   setForm((f) => ({
                     ...f,
-                    autoPayPaidBy: e.target.value as UserId,
+                    autoPayPaidBy: v as UserId,
                   }))
                 }
-              >
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </NativeSelect>
+              />
             </Field>
           )}
         </div>
@@ -755,16 +738,10 @@ export default function DeudasPage() {
               </label>
               {payAsExpense && (
                 <Field label="Pagado por">
-                  <NativeSelect
+                  <PaidBySelect
                     value={paidBy}
-                    onChange={(e) => setPaidBy(e.target.value as UserId)}
-                  >
-                    {people.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
+                    onChange={(v) => setPaidBy(v as UserId)}
+                  />
                 </Field>
               )}
               <div className="flex justify-end gap-2 pt-2">

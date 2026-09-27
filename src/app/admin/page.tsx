@@ -436,6 +436,8 @@ export default function AdminPage() {
                         incomeTemplates: [],
                         dependents: [],
                         insurances: [],
+                        taxPayments: [],
+                        rentaDeclarations: [],
                       });
                       await hydrateFromCloud(selected.id, userId);
                     }
