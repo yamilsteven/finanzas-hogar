@@ -327,13 +327,67 @@ export default function PerfilPage() {
             <Button size="sm" onClick={() => router.push("/admin")}>
               Abrir panel Admin
             </Button>
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Herramientas de prueba (no visibles para otros usuarios)
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (
+                    !confirm(
+                      "¿Cargar datos de demo locales? Sobrescribe gastos/deudas/plantillas de este navegador."
+                    )
+                  ) {
+                    return;
+                  }
+                  resetToMock();
+                  toast.success(
+                    "Datos demo cargados (se guardan en el hogar en la nube)"
+                  );
+                }}
+              >
+                <RotateCcw className="size-3.5" />
+                Cargar datos demo
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive"
+                onClick={() => {
+                  if (
+                    !confirm(
+                      "¿Borrar TODOS los datos financieros de este hogar en la nube? Afecta a todos los miembros."
+                    )
+                  ) {
+                    return;
+                  }
+                  if (
+                    !confirm(
+                      "Confirmación final: se vaciarán gastos, ingresos, deudas, ahorros y plantillas del hogar."
+                    )
+                  ) {
+                    return;
+                  }
+                  void (async () => {
+                    await clearAllData();
+                    showAgain();
+                    toast.success("Hogar vacío en la nube");
+                    router.push("/");
+                  })();
+                }}
+              >
+                Vaciar datos del hogar
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">TRM & Datos</CardTitle>
+          <CardTitle className="text-base">TRM & Preferencias</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm">
@@ -347,43 +401,12 @@ export default function PerfilPage() {
             variant="outline"
             size="sm"
             onClick={() => {
-              resetToMock();
-              toast.success("Datos restaurados a mock inicial");
-            }}
-          >
-            <RotateCcw className="size-3.5" />
-            Restaurar datos mock
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
               showAgain();
               router.push("/");
               toast.message("Guía de primeros pasos visible en el Dashboard");
             }}
           >
             Ver guía de inicio
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-destructive"
-            onClick={() => {
-              if (
-                !confirm(
-                  "¿Borrar todos los datos locales y empezar en limpio? (útil para simular un usuario nuevo)"
-                )
-              ) {
-                return;
-              }
-              clearAllData();
-              showAgain();
-              toast.success("Hogar en limpio");
-              router.push("/");
-            }}
-          >
-            Empezar en limpio
           </Button>
         </CardContent>
       </Card>

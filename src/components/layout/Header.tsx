@@ -28,9 +28,22 @@ export function Header() {
   const expenses = useFinanceStore((s) => s.expenses);
   const incomes = useFinanceStore((s) => s.incomes);
   const savings = useFinanceStore((s) => s.savings);
+  const syncStatus = useFinanceStore((s) => s.syncStatus);
+  const syncError = useFinanceStore((s) => s.syncError);
 
   const { people, isMultiPerson, householdName } = useHouseholdPeople();
   const periodKey = currentPeriodKey();
+
+  const syncLabel =
+    syncStatus === "loading"
+      ? "sincronizando…"
+      : syncStatus === "saving"
+        ? "guardando…"
+        : syncStatus === "ready"
+          ? "en la nube"
+          : syncStatus === "error"
+            ? "error de sync"
+            : null;
 
   useEffect(() => {
     if (!isMultiPerson && viewMode !== "Combined") {
@@ -75,8 +88,12 @@ export function Header() {
             <h1 className="font-heading text-lg font-semibold tracking-tight md:text-xl">
               {title}
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p
+              className="text-xs text-muted-foreground"
+              title={syncError ?? undefined}
+            >
               {viewLabel} · flujo de {formatPeriodLabel(periodKey)}
+              {syncLabel ? ` · ${syncLabel}` : ""}
             </p>
           </div>
 

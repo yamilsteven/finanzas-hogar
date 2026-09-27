@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { BottomNav, Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { AuthGate } from "@/components/providers/AuthGate";
+import { FinanceSyncBootstrap } from "@/components/providers/FinanceSyncBootstrap";
 import { ViewModeFromAuth } from "@/components/providers/ViewModeFromAuth";
 import { useHydrated } from "@/hooks/useHydrated";
 import { useFinanceStore } from "@/store/financeStore";
@@ -38,6 +39,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     return (
       <AuthGate>
         <ViewModeFromAuth />
+        <FinanceSyncBootstrap />
         {children}
       </AuthGate>
     );
@@ -57,6 +59,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>
       <ViewModeFromAuth />
+      <FinanceSyncBootstrap />
       <div className="flex min-h-dvh bg-background">
         <Sidebar
           collapsed={collapsed}

@@ -2,14 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { Check, Circle, ListChecks, X } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   useOnboardingSteps,
   useOnboardingStore,
 } from "@/hooks/useOnboardingSteps";
-import { useFinanceStore } from "@/store/financeStore";
 import { cn } from "@/lib/utils";
 
 export function OnboardingChecklist() {
@@ -17,7 +15,6 @@ export function OnboardingChecklist() {
   const dismissed = useOnboardingStore((s) => s.dismissed);
   const dismiss = useOnboardingStore((s) => s.dismiss);
   const showAgain = useOnboardingStore((s) => s.showAgain);
-  const clearAllData = useFinanceStore((s) => s.clearAllData);
   const { steps, doneCount, totalRequired, allRequiredDone, isEmptyHome } =
     useOnboardingSteps();
 
@@ -104,26 +101,6 @@ export function OnboardingChecklist() {
               Ocultar guía
             </Button>
           ) : null}
-          {!isEmptyHome && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                if (
-                  !confirm(
-                    "¿Borrar todos los datos locales (gastos, deudas, plantillas, mock) y empezar en limpio?"
-                  )
-                ) {
-                  return;
-                }
-                clearAllData();
-                showAgain();
-                toast.success("Hogar en limpio. Sigue la guía de primeros pasos.");
-              }}
-            >
-              Empezar en limpio
-            </Button>
-          )}
         </div>
       </CardContent>
     </Card>
