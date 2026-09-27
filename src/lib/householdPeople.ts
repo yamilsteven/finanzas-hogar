@@ -34,17 +34,26 @@ export function personFromMember(m: HouseholdMemberRow): Person {
   };
 }
 
+/**
+ * Personas del hogar activo.
+ * Con sesión real: solo miembros (nunca mock Yamil/Liz).
+ * Sin sesión (demo local): opcional fallback a mock.
+ */
 export function resolveHouseholdPeople(
-  members: HouseholdMemberRow[] | undefined | null
+  members: HouseholdMemberRow[] | undefined | null,
+  options?: { allowMockFallback?: boolean }
 ): Person[] {
   if (members && members.length > 0) {
     return members.map(personFromMember);
   }
-  return mockUsers.map((u) => ({
-    id: u.id,
-    name: u.name,
-    avatarColor: u.avatarColor,
-  }));
+  if (options?.allowMockFallback) {
+    return mockUsers.map((u) => ({
+      id: u.id,
+      name: u.name,
+      avatarColor: u.avatarColor,
+    }));
+  }
+  return [];
 }
 
 export function isMultiPersonHousehold(people: Person[]): boolean {

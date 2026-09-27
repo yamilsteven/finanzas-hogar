@@ -165,6 +165,21 @@ export async function revokeInvitation(
   return {};
 }
 
+export async function deleteHouseholdAsAdmin(
+  householdId: string
+): Promise<{ error?: string; name?: string }> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { error: "Supabase no configurado" };
+
+  const { data, error } = await supabase.rpc("delete_household_as_admin", {
+    p_household_id: householdId,
+  });
+
+  if (error) return { error: error.message };
+  const row = data as { name?: string; ok?: boolean };
+  return { name: row.name };
+}
+
 export async function acceptInvitation(
   token: string
 ): Promise<{ householdId?: string; error?: string }> {

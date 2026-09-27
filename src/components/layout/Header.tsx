@@ -132,7 +132,8 @@ export function Header() {
               </div>
             ) : (
               <div className="rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground">
-                {people[0]?.name ?? "Personal"}
+                {people[0]?.name ??
+                  (householdName ? "Sin miembros activos" : "Personal")}
               </div>
             )}
 

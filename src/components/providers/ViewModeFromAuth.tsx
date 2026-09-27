@@ -6,40 +6,59 @@ import { useAuthStore } from "@/store/authStore";
 import { useSessionStore } from "@/store/sessionStore";
 
 /**
- * Al iniciar sesión (o cambiar de usuario), el switcher queda en
- * el miembro logueado. Hogar de 1 persona → Combined.
+ * Al iniciar sesión / cambiar de hogar, el switcher refleja
+ * los miembros reales. Hogar de 0–1 persona → Combined.
  */
 export function ViewModeFromAuth() {
   const ready = useAuthStore((s) => s.ready);
   const userId = useAuthStore((s) => s.user?.id);
+  const householdId = useAuthStore((s) => s.household?.id);
   const myMembership = useAuthStore((s) => s.myMembership);
+  const viewMode = useSessionStore((s) => s.viewMode);
   const setViewMode = useSessionStore((s) => s.setViewMode);
-  const { isMultiPerson } = useHouseholdPeople();
-  const lastUserId = useRef<string | null>(null);
+  const { people, isMultiPerson } = useHouseholdPeople();
+  const lastKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!ready) return;
 
     if (!userId) {
-      lastUserId.current = null;
+      lastKey.current = null;
       return;
     }
 
-    if (!myMembership) return;
-
-    const userChanged = lastUserId.current !== userId;
-    lastUserId.current = userId;
+    const key = `${userId}:${householdId ?? "none"}`;
+    const contextChanged = lastKey.current !== key;
+    lastKey.current = key;
 
     if (!isMultiPerson) {
-      setViewMode("Combined");
+      if (viewMode !== "Combined") setViewMode("Combined");
       return;
     }
 
-    // Solo al entrar / cambiar de cuenta (no pisa un cambio manual en la misma sesión)
-    if (userChanged) {
-      setViewMode(myMembership.display_name);
+    // Vista guardada ya no existe en este hogar (ej. quedó "Yamil")
+    const viewStillValid =
+      viewMode === "Combined" || people.some((p) => p.id === viewMode);
+
+    if (contextChanged || !viewStillValid) {
+      if (myMembership) {
+        setViewMode(myMembership.display_name);
+      } else if (people[0]) {
+        setViewMode(people[0].id);
+      } else {
+        setViewMode("Combined");
+      }
     }
-  }, [ready, userId, myMembership, isMultiPerson, setViewMode]);
+  }, [
+    ready,
+    userId,
+    householdId,
+    myMembership,
+    isMultiPerson,
+    people,
+    viewMode,
+    setViewMode,
+  ]);
 
   return null;
 }

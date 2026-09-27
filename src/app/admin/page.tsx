@@ -11,6 +11,7 @@ import { Field, NativeSelect } from "@/components/shared/Field";
 import {
   createHouseholdAsAdmin,
   createInvitation,
+  deleteHouseholdAsAdmin,
   inviteUrl,
   listHouseholdsForAdmin,
   listInvitationsForHousehold,
@@ -32,8 +33,11 @@ export default function AdminPage() {
   const setActiveHousehold = useAuthStore((s) => s.setActiveHousehold);
   const hydrateFromCloud = useFinanceStore((s) => s.hydrateFromCloud);
   const replaceBundle = useFinanceStore((s) => s.replaceBundle);
+  const clearSyncContext = useFinanceStore((s) => s.clearSyncContext);
+  const refreshHousehold = useAuthStore((s) => s.refreshHousehold);
   const userId = useAuthStore((s) => s.user?.id);
   const [resetting, setResetting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [households, setHouseholds] = useState<HouseholdListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -345,6 +349,48 @@ export default function AdminPage() {
                 }}
               >
                 {resetting ? "Vaciando…" : "Vaciar finanzas del hogar"}
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={deleting}
+                onClick={() => {
+                  if (
+                    !confirm(
+                      `¿BORRAR el hogar «${selected.name}» por completo?\n\nSe eliminan miembros, invitaciones y todas las finanzas. No se puede deshacer.`
+                    )
+                  ) {
+                    return;
+                  }
+                  const typed = prompt(
+                    `Escribe el nombre exacto del hogar para confirmar el borrado:\n${selected.name}`
+                  );
+                  if (typed !== selected.name) {
+                    toast.message("Nombre no coincide · no se borró nada");
+                    return;
+                  }
+                  void (async () => {
+                    setDeleting(true);
+                    const wasActive = household?.id === selected.id;
+                    const res = await deleteHouseholdAsAdmin(selected.id);
+                    setDeleting(false);
+                    if (res.error) {
+                      toast.error(res.error);
+                      return;
+                    }
+                    setSelectedId(null);
+                    await loadList();
+                    if (wasActive) {
+                      clearSyncContext();
+                      await refreshHousehold();
+                    }
+                    toast.success(
+                      `Hogar «${res.name ?? selected.name}» eliminado`
+                    );
+                  })();
+                }}
+              >
+                {deleting ? "Borrando…" : "Borrar hogar"}
               </Button>
             </div>
           </div>

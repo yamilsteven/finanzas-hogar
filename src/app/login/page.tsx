@@ -57,6 +57,18 @@ export default function LoginPage() {
         setMode("signin");
         return;
       }
+      const msg = result.error.toLowerCase();
+      if (
+        mode === "signup" &&
+        (msg.includes("signups not allowed") ||
+          msg.includes("signup is disabled") ||
+          msg.includes("sign ups not allowed"))
+      ) {
+        toast.error(
+          "Los registros están deshabilitados en Supabase. Activa «Allow new users to sign up» en Authentication → Providers → Email."
+        );
+        return;
+      }
       toast.error(result.error);
       return;
     }

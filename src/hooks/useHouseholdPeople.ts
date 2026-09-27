@@ -18,9 +18,11 @@ export function useHouseholdPeople(): {
   const session = useAuthStore((s) => s.session);
 
   const people = useMemo(() => {
-    // Solo usar miembros del hogar si hay sesión real
-    if (session) return resolveHouseholdPeople(members);
-    return resolveHouseholdPeople(null);
+    // Sesión real: nunca caer a mock Yamil/Liz
+    if (session) {
+      return resolveHouseholdPeople(members, { allowMockFallback: false });
+    }
+    return resolveHouseholdPeople(null, { allowMockFallback: true });
   }, [session, members]);
 
   return {
