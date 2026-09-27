@@ -58,6 +58,9 @@ export default function AdminPage() {
     "member"
   );
   const [inviting, setInviting] = useState(false);
+  /** Último link de invitación generado (crear hogar u otra invitación) */
+  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+  const [lastInviteLabel, setLastInviteLabel] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -99,14 +102,21 @@ export default function AdminPage() {
     void loadDetail(selectedId);
   }, [selectedId, loadDetail]);
 
-  const copyLink = async (token: string) => {
+  const copyLink = async (token: string, label?: string) => {
     const url = inviteUrl(token);
+    setLastInviteUrl(url);
+    setLastInviteLabel(label ?? null);
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("Link copiado");
+      toast.success(
+        label
+          ? `Link de ${label} copiado · pégalo en WhatsApp`
+          : "Link de invitación copiado · pégalo en WhatsApp"
+      );
     } catch {
-      toast.message(url);
+      toast.message("Copia el link desde el cuadro de abajo");
     }
+    return url;
   };
 
   const onCreateHousehold = async (e: React.FormEvent) => {
@@ -123,13 +133,16 @@ export default function AdminPage() {
       toast.error(res.error);
       return;
     }
-    toast.success(
-      res.data?.mode === "member_linked"
-        ? "Hogar creado y owner vinculado"
-        : "Hogar creado · invitación pendiente"
-    );
-    if (res.data?.invite_token) {
-      await copyLink(res.data.invite_token);
+    if (res.data?.mode === "member_linked") {
+      toast.success("Hogar creado y owner ya vinculado (tenía cuenta)");
+    } else if (res.data?.invite_token) {
+      toast.success("Hogar creado · copia el link del owner abajo");
+      await copyLink(
+        res.data.invite_token,
+        createDisplay || createEmail || "owner"
+      );
+    } else {
+      toast.success("Hogar creado");
     }
     setCreateName("");
     setCreateEmail("");
@@ -156,7 +169,9 @@ export default function AdminPage() {
       return;
     }
     toast.success("Invitación creada");
-    if (res.token) await copyLink(res.token);
+    if (res.token) {
+      await copyLink(res.token, invDisplay || invEmail || "invitado");
+    }
     setInvEmail("");
     setInvDisplay("");
     setInvKey("b");
@@ -241,7 +256,39 @@ export default function AdminPage() {
                 <Plus className="size-4" />
                 {creating ? "Creando…" : "Crear hogar"}
               </Button>
+              <p className="text-[11px] text-muted-foreground">
+                No enviamos correo. Al crear, se genera el link del owner para
+                que lo copies y lo envíes por WhatsApp.
+              </p>
             </form>
+
+            {lastInviteUrl && (
+              <div className="mt-4 space-y-2 rounded-lg border border-teal-500/30 bg-teal-500/10 p-3">
+                <p className="text-sm font-medium text-teal-900">
+                  Link de invitación
+                  {lastInviteLabel ? ` · ${lastInviteLabel}` : ""}
+                </p>
+                <p className="break-all rounded-md bg-background/80 px-2 py-1.5 font-mono text-xs">
+                  {lastInviteUrl}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(lastInviteUrl);
+                      toast.success("Link copiado · pégalo en WhatsApp");
+                    } catch {
+                      toast.message(lastInviteUrl);
+                    }
+                  }}
+                >
+                  <Copy className="size-3.5" />
+                  Copiar link otra vez
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -528,7 +575,12 @@ export default function AdminPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void copyLink(inv.token)}
+                            onClick={() =>
+                              void copyLink(
+                                inv.token,
+                                inv.display_name || inv.email
+                              )
+                            }
                           >
                             <Copy className="size-3.5" />
                             Copiar link
