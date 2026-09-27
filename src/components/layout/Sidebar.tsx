@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Receipt,
@@ -14,13 +15,26 @@ import {
   Home,
   Shield,
   ShieldCheck,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME, APP_SHORT } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useAuthStore } from "@/store/authStore";
 
-const baseNavItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+};
+
+const baseNavItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/gastos", label: "Gastos / Pagos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
@@ -30,10 +44,15 @@ const baseNavItems = [
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
 
-const baseMobileNavItems = [
+/** 4 principales en la barra inferior */
+const mobilePrimaryItems: NavItem[] = [
   { href: "/", label: "Inicio", icon: Home },
+  { href: "/ingresos", label: "Ingresos", icon: Wallet },
   { href: "/gastos", label: "Pagos", icon: Receipt },
   { href: "/deudas", label: "Deudas", icon: CreditCard },
+];
+
+const mobileMoreBase: NavItem[] = [
   { href: "/ahorros", label: "Ahorros", icon: PiggyBank },
   { href: "/seguros", label: "Seguros", icon: ShieldCheck },
   { href: "/perfil", label: "Perfil", icon: UserRound },
@@ -41,22 +60,25 @@ const baseMobileNavItems = [
 
 function useNavItems() {
   const isPlatformAdmin = useAuthStore((s) => s.isPlatformAdmin);
-  if (!isPlatformAdmin) {
-    return { navItems: baseNavItems, mobileNavItems: baseMobileNavItems };
-  }
-  const adminItem = { href: "/admin", label: "Admin", icon: Shield };
-  return {
-    navItems: [
-      ...baseNavItems.slice(0, -1),
-      adminItem,
-      baseNavItems[baseNavItems.length - 1],
-    ],
-    mobileNavItems: [
-      ...baseMobileNavItems.slice(0, -1),
-      adminItem,
-      baseMobileNavItems[baseMobileNavItems.length - 1],
-    ],
-  };
+  const adminItem: NavItem = { href: "/admin", label: "Admin", icon: Shield };
+
+  const navItems = isPlatformAdmin
+    ? [
+        ...baseNavItems.slice(0, -1),
+        adminItem,
+        baseNavItems[baseNavItems.length - 1],
+      ]
+    : baseNavItems;
+
+  const moreItems = isPlatformAdmin
+    ? [adminItem, ...mobileMoreBase]
+    : mobileMoreBase;
+
+  return { navItems, moreItems };
+}
+
+function pathActive(pathname: string, href: string) {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
 export function Sidebar({
@@ -95,10 +117,7 @@ export function Sidebar({
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {navItems.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+          const active = pathActive(pathname, item.href);
           const Icon = item.icon;
           return (
             <Link
@@ -142,40 +161,97 @@ export function Sidebar({
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { mobileNavItems } = useNavItems();
-  const cols = mobileNavItems.length;
+  const router = useRouter();
+  const { moreItems } = useNavItems();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const moreActive = moreItems.some((item) => pathActive(pathname, item.href));
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-backdrop-filter:bg-background/80 md:hidden">
-      <ul
-        className="grid h-14"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-      >
-        {mobileNavItems.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <li key={item.href} className="min-w-0">
-              <Link
-                href={item.href}
-                aria-label={item.label}
+    <>
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-backdrop-filter:bg-background/80 md:hidden">
+        <ul className="grid h-14 grid-cols-5">
+          {mobilePrimaryItems.map((item) => {
+            const active = pathActive(pathname, item.href);
+            const Icon = item.icon;
+            return (
+              <li key={item.href} className="min-w-0">
+                <Link
+                  href={item.href}
+                  aria-label={item.label}
+                  className={cn(
+                    "flex h-full flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] leading-none",
+                    active
+                      ? "font-medium text-primary"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  <Icon className="size-[18px] shrink-0" />
+                  <span className="max-w-full truncate">{item.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+          <li className="min-w-0">
+            <button
+              type="button"
+              aria-label="Más"
+              onClick={() => setMoreOpen(true)}
+              className={cn(
+                "flex h-full w-full flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] leading-none",
+                moreActive
+                  ? "font-medium text-primary"
+                  : "text-muted-foreground"
+              )}
+            >
+              <span
                 className={cn(
-                  "flex h-full flex-col items-center justify-center gap-0.5 px-0.5 text-[9px] leading-none sm:text-[10px]",
-                  active
-                    ? "font-medium text-primary"
-                    : "text-muted-foreground"
+                  "flex size-[18px] items-center justify-center rounded-full border",
+                  moreActive
+                    ? "border-primary bg-primary/10"
+                    : "border-muted-foreground/40"
                 )}
               >
-                <Icon className="size-4 shrink-0 sm:size-[18px]" />
-                <span className="max-w-full truncate">{item.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+                <Plus className="size-3.5" />
+              </span>
+              <span>Más</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl pb-8">
+          <SheetHeader>
+            <SheetTitle>Más opciones</SheetTitle>
+          </SheetHeader>
+          <div className="mt-2 grid grid-cols-2 gap-2 px-1 pb-2">
+            {moreItems.map((item) => {
+              const active = pathActive(pathname, item.href);
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.href}
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    router.push(item.href);
+                  }}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border px-3 py-3 text-left text-sm transition-colors",
+                    active
+                      ? "border-primary/40 bg-primary/5 font-medium text-primary"
+                      : "hover:bg-muted/60"
+                  )}
+                >
+                  <Icon className="size-5 shrink-0" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
