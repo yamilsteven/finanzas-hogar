@@ -30,7 +30,6 @@ export default function PerfilPage() {
   const isAdmin = useSessionStore((s) => s.isAdmin);
   const setIsAdmin = useSessionStore((s) => s.setIsAdmin);
   const resetToMock = useFinanceStore((s) => s.resetToMock);
-  const clearAllData = useFinanceStore((s) => s.clearAllData);
   const dependents = useFinanceStore((s) => s.dependents);
   const addDependent = useFinanceStore((s) => s.addDependent);
   const updateDependent = useFinanceStore((s) => s.updateDependent);
@@ -329,7 +328,11 @@ export default function PerfilPage() {
             </Button>
             <div className="space-y-2 border-t pt-3">
               <p className="text-xs font-medium text-muted-foreground">
-                Herramientas de prueba (no visibles para otros usuarios)
+                Herramientas de prueba
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Para vaciar un hogar concreto, usa Admin → seleccionar hogar →
+                «Vaciar finanzas del hogar».
               </p>
               <Button
                 variant="outline"
@@ -337,7 +340,7 @@ export default function PerfilPage() {
                 onClick={() => {
                   if (
                     !confirm(
-                      "¿Cargar datos de demo locales? Sobrescribe gastos/deudas/plantillas de este navegador."
+                      "¿Cargar datos de demo en el hogar activo? Sobrescribe finanzas en la nube."
                     )
                   ) {
                     return;
@@ -349,36 +352,7 @@ export default function PerfilPage() {
                 }}
               >
                 <RotateCcw className="size-3.5" />
-                Cargar datos demo
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive"
-                onClick={() => {
-                  if (
-                    !confirm(
-                      "¿Borrar TODOS los datos financieros de este hogar en la nube? Afecta a todos los miembros."
-                    )
-                  ) {
-                    return;
-                  }
-                  if (
-                    !confirm(
-                      "Confirmación final: se vaciarán gastos, ingresos, deudas, ahorros y plantillas del hogar."
-                    )
-                  ) {
-                    return;
-                  }
-                  void (async () => {
-                    await clearAllData();
-                    showAgain();
-                    toast.success("Hogar vacío en la nube");
-                    router.push("/");
-                  })();
-                }}
-              >
-                Vaciar datos del hogar
+                Cargar datos demo (hogar activo)
               </Button>
             </div>
           </CardContent>

@@ -19,8 +19,10 @@ import {
   type HouseholdListItem,
   type InvitationRow,
 } from "@/lib/supabase/adminApi";
+import { clearHouseholdFinance } from "@/lib/supabase/financeSync";
 import type { HouseholdMemberRow } from "@/store/authStore";
 import { useAuthStore } from "@/store/authStore";
+import { useFinanceStore } from "@/store/financeStore";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -28,6 +30,10 @@ export default function AdminPage() {
   const isPlatformAdmin = useAuthStore((s) => s.isPlatformAdmin);
   const household = useAuthStore((s) => s.household);
   const setActiveHousehold = useAuthStore((s) => s.setActiveHousehold);
+  const hydrateFromCloud = useFinanceStore((s) => s.hydrateFromCloud);
+  const replaceBundle = useFinanceStore((s) => s.replaceBundle);
+  const userId = useAuthStore((s) => s.user?.id);
+  const [resetting, setResetting] = useState(false);
 
   const [households, setHouseholds] = useState<HouseholdListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -281,17 +287,65 @@ export default function AdminPage() {
               </h3>
               <p className="text-xs text-muted-foreground">{selected.id}</p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                const res = await setActiveHousehold(selected.id);
-                if (res.error) toast.error(res.error);
-                else toast.success(`Entraste a «${selected.name}»`);
-              }}
-            >
-              Entrar a este hogar
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  const res = await setActiveHousehold(selected.id);
+                  if (res.error) toast.error(res.error);
+                  else toast.success(`Entraste a «${selected.name}»`);
+                }}
+              >
+                Entrar a este hogar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive"
+                disabled={resetting}
+                onClick={() => {
+                  if (
+                    !confirm(
+                      `¿Vaciar TODAS las finanzas de «${selected.name}» en la nube? Afecta a todos los miembros.`
+                    )
+                  ) {
+                    return;
+                  }
+                  const typed = prompt(
+                    `Escribe el nombre exacto del hogar para confirmar:\n${selected.name}`
+                  );
+                  if (typed !== selected.name) {
+                    toast.message("Nombre no coincide · no se borró nada");
+                    return;
+                  }
+                  void (async () => {
+                    setResetting(true);
+                    const res = await clearHouseholdFinance(selected.id);
+                    setResetting(false);
+                    if (res.error) {
+                      toast.error(res.error);
+                      return;
+                    }
+                    if (household?.id === selected.id && userId) {
+                      replaceBundle({
+                        debts: [],
+                        expenses: [],
+                        incomes: [],
+                        savings: [],
+                        expenseTemplates: [],
+                        incomeTemplates: [],
+                        dependents: [],
+                      });
+                      await hydrateFromCloud(selected.id, userId);
+                    }
+                    toast.success(`Hogar «${selected.name}» vacío`);
+                  })();
+                }}
+              >
+                {resetting ? "Vaciando…" : "Vaciar finanzas del hogar"}
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
